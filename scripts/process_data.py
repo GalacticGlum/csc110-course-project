@@ -163,6 +163,27 @@ def process_file(filepath: Path, language_filters: Set[str]=None, \
         json.dump(tweets, output_file)
 
 
+def main(args: argparse.Namespace) -> None:
+    """Main entrypoint for the script."""
+    # Get all files as a list
+    files = list(args.input_directory.glob(args.glob))
+    # Convert language filters to set for fast lookup
+    language_filters = set(args.language_filters)
+
+    process_file_kwargs = {
+        'language_filters': language_filters,
+        'keep_retweets': args.keep_retweets,
+        'delete_source': args.delete_source
+    }
+
+    parallel_map(
+        [{'filepath': file, **process_file_kwargs} for file in files],
+        process_file,
+        n_jobs=args.num_workers,
+        use_kwargs=True
+    )
+
+
 def parallel_map(array, function, n_jobs=16, use_kwargs=False, front_num=3, multithread=False,
                  show_progress_bar=True, extend_result=False, initial_value=list()):
     """
@@ -240,27 +261,6 @@ def parallel_map(array, function, n_jobs=16, use_kwargs=False, front_num=3, mult
             _add_func(e)
 
     return out
-
-
-def main(args: argparse.Namespace) -> None:
-    """Main entrypoint for the script."""
-    # Get all files as a list
-    files = list(args.input_directory.glob(args.glob))
-    # Convert language filters to set for fast lookup
-    language_filters = set(args.language_filters)
-
-    process_file_kwargs = {
-        'language_filters': language_filters,
-        'keep_retweets': args.keep_retweets,
-        'delete_source': args.delete_source
-    }
-
-    parallel_map(
-        [{'filepath': file, **process_file_kwargs} for file in files],
-        process_file,
-        n_jobs=args.num_workers,
-        use_kwargs=True
-    )
 
 
 if __name__ == '__main__':
