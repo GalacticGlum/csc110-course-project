@@ -113,7 +113,8 @@ def is_valid_tweet(tweet_data: dict, language_filters: Set[str]) -> bool:
         'text' not in tweet_data:
         return False
 
-    return len(language_filters) == 0 or tweet_data.get('lang', None) in language_filters
+    return len(language_filters) == 0 or \
+           tweet_data.get('lang', None) in language_filters
 
 
 @dataclass
