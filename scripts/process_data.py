@@ -27,6 +27,10 @@ This script strips out irrelevant metadata, and only keeps:
 Note that all data processing is done in-memory, so as to not
 use additional hard disk space for processing the data. If processing
 large amounts of data (> 100 GB), at least 8 GB of RAM is recommended.
+
+Running this script with --delete-source flag is a DESTRUCTIVE and IRREVERSIBLE operation.
+DO SO AT YOUR OWN RISK! We delete the source before saving the cleaned tweets to (ideally)
+free up space for the output file. But, this means that if there was an error, the source is gone.
 """
 
 
@@ -78,7 +82,8 @@ def clean_tweet(tweet_data: dict) -> dict:
         'id': tweet_data['id'],
         'text': tweet_data['text'],
         'truncated': tweet_data.get('truncated', False),
-        'lang': tweet_data.get('lang', None)
+        'lang': tweet_data.get('lang', None),
+        'created_at': tweet_data.get('created_at', None)
     }
 
     # The attributes to copy which require checking if they are NULL or ZERO.
@@ -140,13 +145,17 @@ def process_file(filepath: Path, language_filters: Set[str]=None, \
 
     Return a ProcessedStatistics object.
     """
-    with open(filepath, 'rb') as file:
-        # Decompress file and load it into memory
-        data = bz2.decompress(file.read())
-        source_size_decompressed = len(data)
+    try:
+        with open(filepath, 'rb') as file:
+            # Decompress file and load it into memory
+            data = bz2.decompress(file.read())
+            source_size_decompressed = len(data)
 
-        # Convert the bytearray to a string
-        data = data.decode('utf-8').strip()
+            # Convert the bytearray to a string
+            data = data.decode('utf-8').strip()
+    except:
+        # TODO: log exception
+        return
 
     # At this point, this should just be a string containing JSON data.
     # So, we can change load it into a Python dict.
@@ -227,7 +236,8 @@ def main(args: argparse.Namespace) -> None:
         'destination_directory': args.destination_directory
     }
 
-    # sizes is a list of ProcessedStatistics objects.
+    # A list containing the output of the process_file
+    # function for each element of files.
     sizes = parallel_map(
         [{'filepath': file, **process_file_kwargs} for file in files],
         process_file,
@@ -236,6 +246,11 @@ def main(args: argparse.Namespace) -> None:
     )
 
     if args.summarise:
+        # The parallel_map returns the output of the function, or an Exception
+        # (if one was raised). So, we need to filter out all invalid values.
+        sizes = [x for x in sizes if isinstance(x, ProcessedStatistics)]
+
+        # Compute total stats
         total_source_size = sum(stats.source_size for stats in sizes)
         total_processed_size = sum(stats.processed_size for stats in sizes)
         total_source_tweets = sum(stats.num_tweets_source for stats in sizes)
