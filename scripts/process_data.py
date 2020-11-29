@@ -28,9 +28,9 @@ Note that all data processing is done in-memory, so as to not
 use additional hard disk space for processing the data. If processing
 large amounts of data (> 100 GB), at least 8 GB of RAM is recommended.
 
-Running this script with --delete-source flag is a DESTRUCTIVE and IRREVERSIBLE operation.
-DO SO AT YOUR OWN RISK! We delete the source before saving the cleaned tweets to (ideally)
-free up space for the output file. But, this means that if there was an error, the source is gone.
+Running this script with the --delete-source flag is a DESTRUCTIVE and IRREVERSIBLE operation.
+DO SO AT YOUR OWN RISK! We delete the source bz2 file before saving the cleaned tweets to (ideally)
+free up space for the output JSON file. But, this means that if there was an error, the source is gone.
 """
 
 
