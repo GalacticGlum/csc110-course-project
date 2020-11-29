@@ -29,43 +29,24 @@ use additional hard disk space for processing the data. If processing
 large amounts of data (> 100 GB), at least 8 GB of RAM is recommended.
 
 Running this script with the --delete-source flag is a DESTRUCTIVE and IRREVERSIBLE operation.
-DO SO AT YOUR OWN RISK! We delete the source bz2 file before saving the cleaned tweets to (ideally)
-free up space for the output JSON file. But, this means that if there was an error, the source is gone.
-"""
+DO SO AT YOUR OWN RISK!
 
+We delete the source bz2 file before saving the cleaned tweets to (ideally) free up space for the
+output JSON file. But, this means that if there was an error, the source is gone.
+"""
 
 import bz2
 import json
 import argparse
-from tqdm import tqdm
-from typing import Set
+
 from pathlib import Path
+from dataclasses import dataclass
+from typing import Tuple, List, Set
+
 from texttable import Texttable
 from hurry.filesize import size
-from dataclasses import dataclass
-from concurrent.futures import (
-    ThreadPoolExecutor,
-    ProcessPoolExecutor,
-    as_completed
-)
 
-
-parser = argparse.ArgumentParser(description='Process raw Twitter data.')
-parser.add_argument('input_directory', type=Path, help='Directory containing the data.')
-parser.add_argument('-o', '--destination-directory', type=Path, default=None,
-                    help='The directory to save the files. If unspecified, '
-                    'defaults to the location of the processed bz2 file.')
-parser.add_argument('-d', '--delete-source', action='store_true', dest='delete_source',
-                    help='Whether to delete the source .bz2 files after processing.')
-parser.add_argument('-l', '--language-filters', nargs='+', type=str, default=['en'],
-                    help='Languages to include. If empty, no language filtering is applied.')
-parser.add_argument('--keep-retweets', action='store_true', dest='keep_retweets',
-                    help='Whether to keep retweet (tweets that have a "retweeted_status" param).')
-parser.add_argument('--glob', type=str, default='**/*.bz2', help='Glob pattern to find data files.')
-parser.add_argument('--num-workers', type=int, default=8, help='The number of threads to use. Defaults to 8.')
-parser.add_argument('--summarise', action='store_true', dest='summarise',
-                    help='Display a summary of the data processing.')
-parser.set_defaults(keep_retweets=False)
+from utils import parallel_map
 
 
 def clean_tweet(tweet_data: dict) -> dict:
@@ -95,7 +76,9 @@ def clean_tweet(tweet_data: dict) -> dict:
     for attribute_name in ATTRIBUTES_TO_COPY:
         value = tweet_data.get(attribute_name, None)
         # Include if it is not NULL OR ZERO
-        if value is None or value == 0: continue
+        if value is None or value == 0:
+            continue
+
         result[attribute_name] = value
 
     return result
@@ -114,12 +97,11 @@ def is_valid_tweet(tweet_data: dict, language_filters: Set[str]) -> bool:
     """
     # Make sure the tweet has required attributes and isn't deleted
     if 'delete' in tweet_data or \
-        'id' not in tweet_data or \
-        'text' not in tweet_data:
+       'id' not in tweet_data or \
+       'text' not in tweet_data:
         return False
 
-    return len(language_filters) == 0 or \
-           tweet_data.get('lang', None) in language_filters
+    return len(language_filters) == 0 or tweet_data.get('lang', None) in language_filters
 
 
 @dataclass
@@ -138,24 +120,16 @@ class ProcessedStatistics:
     num_tweets_processed: int
 
 
-def process_file(filepath: Path, language_filters: Set[str]=None, \
-                 keep_retweets: bool=False, delete_source: bool=False, \
-                 destination_directory: Path=None) -> ProcessedStatistics:
-    """Process a .bz2 file based on the given language filters.
+def load_tweets(filepath: Path) -> Tuple[List[dict], int]:
+    """Load tweets from a bz2 file.
+    Return a list of tweet data and the size of the source file, in bytes."""
+    with open(filepath, 'rb') as file:
+        # Decompress file and load it into memory
+        data = bz2.decompress(file.read())
+        source_size_decompressed = len(data)
 
-    Return a ProcessedStatistics object.
-    """
-    try:
-        with open(filepath, 'rb') as file:
-            # Decompress file and load it into memory
-            data = bz2.decompress(file.read())
-            source_size_decompressed = len(data)
-
-            # Convert the bytearray to a string
-            data = data.decode('utf-8').strip()
-    except:
-        # TODO: log exception
-        return
+        # Convert the bytearray to a string
+        data = data.decode('utf-8').strip()
 
     # At this point, this should just be a string containing JSON data.
     # So, we can change load it into a Python dict.
@@ -164,19 +138,25 @@ def process_file(filepath: Path, language_filters: Set[str]=None, \
     # a JSON list, while others contain each object on its own line.
     # This second format is not technically 'legal' JSON, since you can't
     # have multiple root objects. But, we will handle both.
-    try:
-        if data[0] == '[' and data[-1] == ']':
-            # If the file starts and ends with list 'characters' then we can be
-            # reasonably sure that the JSON data is formatted as a list.
-            tweets = json.loads(data)
-        else:
-            # Split by line and load each object separately.
-            tweets = [json.loads(line) for line in data.split('\n')]
-    except Exception as exception:
-        # TODO: log exception
-        return
+    if data[0] == '[' and data[-1] == ']':
+        # If the file starts and ends with list 'characters' then we can be
+        # reasonably sure that the JSON data is formatted as a list.
+        tweets = json.loads(data)
+    else:
+        # Split by line and load each object separately.
+        tweets = [json.loads(line) for line in data.split('\n')]
 
-    # Default to empty set if the passed in value was None
+    return tweets, source_size_decompressed
+
+
+def process_file(filepath: Path, language_filters: Set[str] = None,
+                 keep_retweets: bool = False, delete_source: bool = False,
+                 destination_directory: Path = None) -> ProcessedStatistics:
+    """Process a .bz2 file based on the given language filters."""
+    # Load data
+    tweets, source_size_decompressed = load_tweets(filepath)
+
+    # Filter data
     language_filters = language_filters or set()
     cleaned_tweets = []
     for tweet in tweets:
@@ -199,8 +179,9 @@ def process_file(filepath: Path, language_filters: Set[str]=None, \
             # to ideally free up space for the output file. But,
             # this means that if there was an error, the source is gone.
             filepath.unlink()
-        except:
-            # TODO: log this!
+        except IOError:
+            # It's not a big deal if we couldn't delete the source.
+            # We should just make a note of it (via logging) and move on.
             pass
 
     destination_filepath = filepath.with_suffix('')
@@ -215,10 +196,10 @@ def process_file(filepath: Path, language_filters: Set[str]=None, \
         json.dump(cleaned_tweets, output_file)
 
     return ProcessedStatistics(
-        source_size_decompressed, # Size of source in bytes
-        destination_filepath.stat().st_size, # Size of processed in bytes
-        len(tweets), # number of tweets in the source file
-        len(cleaned_tweets) # number of tweets after filtering/cleaning
+        source_size_decompressed,  # Size of source in bytes
+        destination_filepath.stat().st_size,  # Size of processed in bytes
+        len(tweets),  # Number of tweets in the source file
+        len(cleaned_tweets)  # Number of tweets after filtering/cleaning
     )
 
 
@@ -262,91 +243,45 @@ def main(args: argparse.Namespace) -> None:
         table.add_rows(
             [['', 'raw', 'cleaned'],
              ['total size', size(total_source_size), size(total_processed_size)],
-             ['total tweets', total_source_size, total_processed_tweets]]
+             ['total tweets', total_source_tweets, total_processed_tweets]]
         )
         print(table.draw())
 
 
-def parallel_map(array: list, function: callable, n_jobs: int=16, use_kwargs: bool=False,
-                 front_num: int=3, multithread: bool=False, show_progress_bar: bool=True,
-                 extend_result: bool=False, initial_value: list=list()):
-    """
-    A parallel version of the map function with a progress bar.
-    :note:
-        This is a utility function for running parallel jobs with progress
-        bar. Originally from http://danshiebler.com/2016-09-14-parallel-progress-bar/.
-        The implementation is identical to the source; however, the documentation and
-        code style has been modified to fit the style of this codebase.
-    :param array:
-        An array to iterate over.
-    :param function:
-        A python function to apply to the elements of array
-    :param n_jobs:
-        The number of cores to use. Defaults to 16.
-    :param use_kwargs:
-        Whether to consider the elements of array as dictionaries of
-        keyword arguments to function. Defaults to ``False``.
-    :param front_num:
-        The number of iterations to run serially before kicking off the
-        parallel job. Useful for catching bugs
-    :param multithread:
-        If ``True``, a :class:``concurrent.futures.ThreadPoolExecutor`` will be used rather
-        than a :class:``concurrent.futures.ProcessPoolExecutor``. Defaults to ``False``.
-    :param show_progress_bar:
-        Indicates whether a loading progress bar should be displayed while the process runs.
-        Defaults to ``True``.
-    :param extend_result:
-        Indicates whether the resultant list should be extended rather than appended to.
-        Defaults to ``False``. Note that this requires that the return value of ``function``
-        is an array-like object.
-    :param initial_value:
-        The initial value of the resultant array. This should be an array-like object.
-    :returns:
-        A list of the form [function(array[0]), function(array[1]), ...].
-    """
-    # We run the first few iterations serially to catch bugs
-    front = []
-    if front_num > 0:
-        front = [function(**a) if use_kwargs else function(a) for a in array[:front_num]]
-
-    # If we set n_jobs to 1, just run a list comprehension. This is useful for benchmarking and debugging.
-    if n_jobs == 1:
-        return front + [function(**a) if use_kwargs else function(a) for a in tqdm(array[front_num:])]
-
-    # Assemble the workers
-    pool_type = ThreadPoolExecutor if multithread else ProcessPoolExecutor
-    with pool_type(max_workers=n_jobs) as pool:
-        # Pass the elements of array into function
-        if use_kwargs:
-            futures = [pool.submit(function, **a) for a in array[front_num:]]
-        else:
-            futures = [pool.submit(function, a) for a in array[front_num:]]
-
-        kwargs = {
-            'total': len(futures),
-            'unit': 'it',
-            'unit_scale': True,
-            'leave': True,
-            'disable': not show_progress_bar
-        }
-
-        # Print out the progress as tasks complete
-        for f in tqdm(as_completed(futures), **kwargs): pass
-
-    out = initial_value
-    out.extend(front)
-
-    # Get the results from the futures.
-    _add_func = lambda x: out.extend(x) if extend_result else out.append(x)
-    for i, future in tqdm(enumerate(futures)):
-        try:
-            _add_func(future.result())
-        except Exception as e:
-            _add_func(e)
-
-    return out
-
-
 if __name__ == '__main__':
-    args = parser.parse_args()
-    main(args)
+    import python_ta
+    python_ta.check_all(config={
+        'extra-imports': [
+            'bz2',
+            'json',
+            'argparse',
+            'pathlib',
+            'dataclasses',
+            'texttable',
+            'hurry.filesize',
+            'utils'
+        ],
+        'allowed-io': ['main', 'process_file', 'load_tweets'],
+        'max-line-length': 100,
+        'disable': ['R1705', 'C0200']
+    })
+
+    parser = argparse.ArgumentParser(description='Process raw Twitter data.')
+    parser.add_argument('input_directory', type=Path, help='Directory containing the data.')
+    parser.add_argument('-o', '--destination-directory', type=Path, default=None,
+                        help='The directory to save the files. If unspecified, '
+                        'defaults to the location of the processed bz2 file.')
+    parser.add_argument('-d', '--delete-source', action='store_true', dest='delete_source',
+                        help='Whether to delete the source .bz2 files after processing.')
+    parser.add_argument('-l', '--language-filters', nargs='+', type=str, default=['en'],
+                        help='Languages to include. If empty, no language filtering is applied.')
+    parser.add_argument('--keep-retweets', action='store_true', dest='keep_retweets',
+                        help='Keep tweets that have a "retweeted_status" param.')
+    parser.add_argument('--glob', type=str, default='**/*.bz2',
+                        help='Glob pattern to find data files.')
+    parser.add_argument('--num-workers', type=int, default=8,
+                        help='The number of threads to use. Defaults to 8.')
+    parser.add_argument('--summarise', action='store_true', dest='summarise',
+                        help='Display a summary of the data processing.')
+    parser.set_defaults(keep_retweets=False)
+    main(parser.parse_args())
