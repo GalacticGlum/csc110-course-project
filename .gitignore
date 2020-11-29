@@ -131,3 +131,6 @@ dmypy.json
 # Ignore VS Code
 .vscode/**
 test_data/
+
+# Python-TA
+pyta_report.html
