@@ -1,15 +1,17 @@
 """Helper functions."""
 
-from tqdm import tqdm
 from concurrent.futures import (
     ThreadPoolExecutor,
     ProcessPoolExecutor,
     as_completed
 )
 
+from tqdm import tqdm
+
+
 def parallel_map(array: list, function: callable, n_jobs: int = 16, use_kwargs: bool = False,
                  front_num: int = 3, multithread: bool = False, show_progress_bar: bool = True,
-                 extend_result: bool = False, initial_value: list = list()):
+                 extend_result: bool = False, initial_value: list = None):
     """
     A parallel version of the map function with a progress bar.
     :note:
@@ -41,6 +43,7 @@ def parallel_map(array: list, function: callable, n_jobs: int = 16, use_kwargs: 
         is an array-like object.
     :param initial_value:
         The initial value of the resultant array. This should be an array-like object.
+        Defaults to None.
     :returns:
         A list of the form [function(array[0]), function(array[1]), ...].
     """
@@ -71,17 +74,31 @@ def parallel_map(array: list, function: callable, n_jobs: int = 16, use_kwargs: 
         }
 
         # Print out the progress as tasks complete
-        for f in tqdm(as_completed(futures), **kwargs): pass
+        for _ in tqdm(as_completed(futures), **kwargs):
+            pass
 
-    out = initial_value
+    out = initial_value or list()
     out.extend(front)
 
     # Get the results from the futures.
     _add_func = lambda x: out.extend(x) if extend_result else out.append(x)
-    for i, future in tqdm(enumerate(futures)):
+    for _, future in tqdm(enumerate(futures)):
         try:
             _add_func(future.result())
         except Exception as e:
             _add_func(e)
 
     return out
+
+
+if __name__ == '__main__':
+    import python_ta
+    python_ta.check_all(config={
+        'extra-imports': [
+            'tqdm',
+            'concurrent.futures'
+        ],
+        'allowed-io': [],
+        'max-line-length': 100,
+        'disable': ['R1705', 'C0200']
+    })
