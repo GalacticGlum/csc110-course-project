@@ -9,6 +9,9 @@ colorama
 texttable
 hurry.filesize
 
+# Data scraping
+internetarchive
+
 # Data processing and machine learning
 nltk
 tensorflow
