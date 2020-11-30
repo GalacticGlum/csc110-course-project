@@ -1,11 +1,11 @@
 """A logger instance with a colourised format."""
 
-import re
 import copy
 import logging
 import colorama
 
-def colourise_string(string, colour):
+
+def colourise_string(string: str, colour: str) -> str:
     """Return a string with a stdout colour format."""
     reset_style = colorama.Style.RESET_ALL
     return f'{colour}{string}{reset_style}'
@@ -32,17 +32,17 @@ class ColourisedLoggerFormatter(logging.Formatter):
         """Format the log message."""
         # To avoid mutating the original record ('action-at-a-distance'),
         # we make a deepcopy of the record.
-        new_record = copy.copy(record)
-        if new_record.levelno in LOG_COLORS:
+        record_copy = copy.copy(record)
+        if record_copy.levelno in LOG_COLORS:
             # we want levelname to be in different color, so let's modify it
-            colour = LOG_COLORS[new_record.levelno]
-            new_record.levelname = f'{colour}{new_record.levelname}{colorama.Style.RESET_ALL}'
+            colour = LOG_COLORS[record_copy.levelno]
+            record_copy.levelname = f'{colour}{record_copy.levelname}{colorama.Style.RESET_ALL}'
 
         original_format = self._style._fmt
         self._style._fmt = LOG_LEVEL_FORMATS.get(record.levelno, original_format)
 
         # now we can let standart formatting take care of the rest
-        result = super().format(new_record, *args, **kwargs)
+        result = super().format(record_copy, *args, **kwargs)
 
         self._style._fmt = original_format
         return result
@@ -53,3 +53,17 @@ handler = logging.StreamHandler()
 handler.setFormatter(ColourisedLoggerFormatter(LOGGER_FORMAT))
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
+
+if __name__ == '__main__':
+    import python_ta
+    python_ta.check_all(config={
+        'extra-imports': [
+            're',
+            'copy',
+            'logging',
+            'colorama'
+        ],
+        'allowed-io': [],
+        'max-line-length': 100,
+        'disable': ['R1705', 'C0200']
+    })
