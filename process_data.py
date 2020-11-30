@@ -46,6 +46,7 @@ from typing import Tuple, List, Set
 from texttable import Texttable
 from hurry.filesize import size
 
+from logger import logger
 from utils import parallel_map
 
 
@@ -179,10 +180,10 @@ def process_file(filepath: Path, language_filters: Set[str] = None,
             # to ideally free up space for the output file. But,
             # this means that if there was an error, the source is gone.
             filepath.unlink()
-        except IOError:
+        except IOError as exception:
             # It's not a big deal if we couldn't delete the source.
             # We should just make a note of it (via logging) and move on.
-            pass
+            logger.error(exception)
 
     destination_filepath = filepath.with_suffix('')
     if destination_filepath.suffix != '.json':
@@ -260,7 +261,8 @@ if __name__ == '__main__':
             'dataclasses',
             'texttable',
             'hurry.filesize',
-            'utils'
+            'utils',
+            'logger'
         ],
         'allowed-io': ['main', 'process_file', 'load_tweets'],
         'max-line-length': 100,

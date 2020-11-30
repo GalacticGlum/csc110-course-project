@@ -5,6 +5,7 @@ python-ta
 
 # General packages
 tqdm
+colorama
 texttable
 hurry.filesize
 
