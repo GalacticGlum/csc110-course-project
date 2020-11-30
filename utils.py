@@ -10,19 +10,19 @@ def parallel_map(iterables: list, function: callable, n_jobs: int = 16, use_kwar
     """A parallel version of the map function with a progress bar.
     Return a list of the form [function(iterables[0]), function(iterables[1]), ...].
 
-    Parameters
-        - iterables: A sequence, collection, or iterator object.
-        - function: A function to apply to the elements of `iterables`.
-        - n_jobs: The number of jobs to run.
-        - use_kwargs: Whether to consider the elements of iterables as dictionaries of
-                      keyword arguments to function.
-        - front_num: The number of iterations to run serially before dispatching the
-                      parallel jobs. Useful for catching exceptions.
-        - show_progress_bar: Whether to show a progress bar while the jobs run.
-        - initial_value: The initial value of the output list.
-                         This should be an iterables-like object.
-        - raise_errors: Whether to raise errors.
-        - include_errors: Whether to include the errors in the output list.
+    Args:
+        iterables: A sequence, collection, or iterator object.
+        function: A function to apply to the elements of `iterables`.
+        n_jobs: The number of jobs to run.
+        use_kwargs: Whether to consider the elements of iterables as dictionaries of
+            keyword arguments to function.
+        front_num: The number of iterations to run serially before dispatching the
+            parallel jobs. Useful for catching exceptions.
+        show_progress_bar: Whether to show a progress bar while the jobs run.
+        initial_value: The initial value of the output list.
+            This should be an iterables-like object.
+        raise_errors: Whether to raise errors.
+        include_errors: Whether to include the errors in the output list.
     Preconditions:
         - n_jobs >= 1
         - front_num >= 0
