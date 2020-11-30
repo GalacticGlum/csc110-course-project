@@ -223,7 +223,8 @@ def main(args: argparse.Namespace) -> None:
         [{'filepath': file, **process_file_kwargs} for file in files],
         process_file,
         n_jobs=args.num_workers,
-        use_kwargs=True
+        use_kwargs=True,
+        include_errors=False
     )
 
     if args.summarise:
