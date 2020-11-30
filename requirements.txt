@@ -13,5 +13,4 @@ hurry.filesize
 internetarchive
 
 # Data processing and machine learning
-nltk
 tensorflow
