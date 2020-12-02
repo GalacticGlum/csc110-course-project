@@ -1,12 +1,15 @@
 """Helper functions."""
 
+from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
 
-def parallel_map(iterables: list, function: callable, n_jobs: int = 16, use_kwargs: bool = False,
-                 front_num: int = 3, show_progress_bar: bool = True, initial_value: list = None,
-                 raise_errors: bool = False, include_errors: bool = True) -> list:
+def parallel_map(iterables: list, function: callable, n_jobs: Optional[int] = 16,
+                 use_kwargs: Optional[bool] = False, front_num: Optional[int] = 3,
+                 show_progress_bar: Optional[bool] = True, initial_value: Optional[list] = None,
+                 raise_errors: Optional[bool] = False, include_errors: Optional[bool] = True) \
+        -> list:
     """A parallel version of the map function with a progress bar.
     Return a list of the form [function(iterables[0]), function(iterables[1]), ...].
 
@@ -23,6 +26,7 @@ def parallel_map(iterables: list, function: callable, n_jobs: int = 16, use_kwar
             This should be an iterables-like object.
         raise_errors: Whether to raise errors.
         include_errors: Whether to include the errors in the output list.
+
     Preconditions:
         - n_jobs >= 1
         - front_num >= 0
