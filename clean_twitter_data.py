@@ -129,7 +129,8 @@ class ProcessedStatistics:
 
 def load_tweets(filepath: Path) -> Tuple[List[dict], int]:
     """Load tweets from a bz2 file.
-    Return a list of tweet data and the size of the source file, in bytes."""
+    Return a list of tweet data and the size of the source file, in bytes.
+    """
     with open(filepath, 'rb') as file:
         # Decompress file and load it into memory
         data = bz2.decompress(file.read())
