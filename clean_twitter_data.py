@@ -114,6 +114,12 @@ class ProcessedStatistics:
         - processed_size: the size of the processed file in bytes.
         - num_tweets_source: the number of tweets in the source file.
         - num_tweets_processed: the number of tweets after cleaning/filtering.
+
+    Representation Invariants:
+        - source_size >= 0
+        - processed_size >= 0
+        - num_tweets_source >= 0
+        - num_tweets_processed >= 0
     """
     source_size: int
     processed_size: int
