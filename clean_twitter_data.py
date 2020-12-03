@@ -1,5 +1,4 @@
-"""
-Clean/process raw Twitter data.
+"""Clean/process raw Twitter data.
 
 This script recursively searches for .bz2 files in the given
 directory, decompressses them, and filters the JSON Twitter data.
