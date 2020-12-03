@@ -1,6 +1,6 @@
 """Helper functions."""
 
-from typing import Optional
+from typing import Optional, Union
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
@@ -8,8 +8,9 @@ from tqdm import tqdm
 def parallel_map(iterables: list, function: callable, n_jobs: Optional[int] = 16,
                  use_kwargs: Optional[bool] = False, front_num: Optional[int] = 3,
                  show_progress_bar: Optional[bool] = True, initial_value: Optional[list] = None,
-                 raise_errors: Optional[bool] = False, include_errors: Optional[bool] = True) \
-        -> list:
+                 raise_errors: Optional[bool] = False, include_errors: Optional[bool] = True,
+                 extend_result: Optional[bool] = False, return_output: Optional[bool] = True) \
+        -> Union[list, None]:
     """A parallel version of the map function with a progress bar.
     Return a list of the form [function(iterables[0]), function(iterables[1]), ...].
 
@@ -26,6 +27,9 @@ def parallel_map(iterables: list, function: callable, n_jobs: Optional[int] = 16
             This should be an iterables-like object.
         raise_errors: Whether to raise errors.
         include_errors: Whether to include the errors in the output list.
+        extend_result: Whether the resultant list should be extended rather than appended to.
+        return_output: Whether to return a list containing the output values of the function.
+            If False, this function does not return None.
 
     Preconditions:
         - n_jobs >= 1
@@ -34,10 +38,12 @@ def parallel_map(iterables: list, function: callable, n_jobs: Optional[int] = 16
     front = [function(**a) if use_kwargs else function(a) for a in iterables[:front_num]]
     # If n_jobs == 1, then we are not parallelising, run all elements serially.
     if n_jobs == 1:
-        return front + [
+        output = front + [
             function(**a) if use_kwargs else function(a)
             for a in tqdm(iterables[front_num:])
         ]
+
+        return output if return_output else None
 
     with ThreadPoolExecutor(max_workers=n_jobs) as pool:
         futures = [
@@ -50,17 +56,22 @@ def parallel_map(iterables: list, function: callable, n_jobs: Optional[int] = 16
             # Do nothing...This for loop is just here to iterate through the futures
             pass
 
+    # Don't bother retrieving the results from the future...If we don't return anything.
+    if not return_output:
+        return None
+
     output = initial_value or list()
     output.extend(front)
 
+    _add_func = lambda x: output.extend(x) if extend_result else output.append(x)
     for _, future in tqdm(enumerate(futures)):
         try:
-            output.append(future.result())
+            _add_func(future.result())
         except Exception as exception:
             if raise_errors:
                 raise exception
             if include_errors:
-                output.append(exception)
+                _add_func(exception)
 
     return output
 
