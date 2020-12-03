@@ -1,8 +1,10 @@
 """Implementation of the Word2Vec model architecture with subsampling and negative sampling."""
 
 import time
+import string
 import random
 from pathlib import Path
+from collections import Counter
 from typing import (
     Tuple,
     List,
@@ -190,9 +192,217 @@ def make_training_data(sequences: List[List[int]], window_size: int,
     return targets, contexts, labels
 
 
+def read_lines(filenames: List[Union[Path, str]]) -> List[str]:
+    """Return a list of non-empty lines from the given files."""
+    all_lines = []
+    for file in filenames:
+        with open(file) as fp:
+            lines = fp.read().splitlines()
+            # Filter out empty lines
+            #
+            # This is a nice Python trick, where empty strings
+            # are treated as a False when converted to booleans.
+            all_lines.extend([line for line in lines if line])
+    return all_lines
+
+
+class Tokenizer:
+    """Text tokenizer.
+
+    By convention, the first element of the vocabulary is an empty string
+    and is used a padding token. Word indices are one-based. And, the vocabulary
+    is sorted by word frequency, where the most-common word has index 2, the
+    second-most common word has index 3, and so on.
+
+    Instance Attributes:
+        - pad_token: Token to represent non-words. A padding token.
+        - unknown_token: Token to represent words not in the dataset.
+        - max_tokens: The maximum number of tokens in the vocabulary.
+            If None, there is no max on the tokens.
+    """
+    # Private Instance Attributes:
+    #   - _vocabulary: A dictionary mapping a string (word) to its encoded index.
+    #   - _inverse_vocabulary: A list of strings, where the i-th element of
+    #           the list corresponds to the word with encoded index i.
+    #   - _counter: Counts the occurences of words.
+    #   - _remove_punctuation_trans: A translation for removing puntuation from a string.
+    _vocabulary: Dict[str, int]
+    _inverse_vocabulary: List[str]
+    _counter: Counter
+    _remove_punctuation_trans: object
+
+    def __init__(self, pad_token='', unknown_token='UNK',
+                 max_tokens: Optional[int] = None) -> None:
+        """Initialize this tokenizer.
+
+        Args:
+            pad_token: Token to represent non-words. A padding token.
+                This token has index 0 in the vocabulary.
+            unknown_token: Token to represent words not in the dataset.
+                This token has index 1 in the vocabulary.
+            max_tokens: The maximum number of tokens in the vocabulary.
+            If None, there is no max on the tokens.
+        """
+        self._counter = Counter()
+        self._remove_punctuation_trans = str.maketrans('', '', string.punctuation)
+
+        self.pad_token = pad_token
+        self.unknown_token = unknown_token
+        self.max_tokens = max_tokens
+
+        self._initialise_defaults()
+
+    def _initialise_defaults(self) -> None:
+        """Initialise the default vocabulary and inverse vocabulary."""
+        self._vocabulary = {self.pad_token: 0, self.unknown_token: 1}
+        self._inverse_vocabulary = [self.pad_token, self.unknown_token]
+
+    def reset(self) -> None:
+        """Reset this tokenizer."""
+        self._initialise_defaults()
+        self._counter = Counter()
+
+    def update(self, data: Union[str, List[str]],
+               reset_state: Optional[bool] = False) -> None:
+        """Update this tokenizer with new text data.
+
+        Args:
+            data: A string, list of strings, or string tensor
+                containing text data to update the tokenizer with.
+            reset_state: Whether to reset the state of the tokenizer.
+        """
+        # Reset the sate if needed
+        if reset_state:
+            self.reset()
+
+        if isinstance(data, str):
+            # Convert the data into a list so that it is consistent.
+            data = [data]
+
+        tokens = []
+        for string in data:
+            tokens.extend(self._tokenize_string(string))
+
+        for token in tokens:
+            # Update the counter
+            self._counter[token] += 1
+
+        self._initialise_defaults()
+        most_common_tokens = self._counter.most_common(self.max_tokens)
+        for token, _ in most_common_tokens:
+            self._vocabulary[token] = len(self._vocabulary)
+            self._inverse_vocabulary.append(token)
+
+    def _tokenize_string(self, string: str) -> List[str]:
+        """Return a list of tokens.
+
+        This removes punctuation, converts the string
+        to lowercase, and splits by spaces.
+        """
+        string = string.translate(self._remove_punctuation_trans)
+        return string.lower().split()
+
+    def _add_tokens(self, *tokens: List[str]) -> None:
+        """Add the given tokens to the tokenizer, in the order of the list.
+
+        If the token already exists in the vocabulary, then it is skipped,
+        and its index is NOT changed.
+        """
+        for token in tokens:
+            # Update the counter
+            self._counter[token] += 1
+
+            if token in self._vocabulary:
+                continue
+
+            self._vocabulary[token] = len(self._vocabulary)
+            self._inverse_vocabulary.append(token)
+
+    def get_frequency(self, *tokens: List[str]) -> Union[int, Tuple[int]]:
+        """Return the frequency of each given token.
+        """
+        frequencies = []
+        for token in tokens:
+            frequencies.append(self._counter[token])
+
+        if len(frequencies) == 1:
+            return frequencies[0]
+        return tuple(frequencies)
+
+    def encode(self, inputs: Union[str, tf.Tensor, List[str], Tuple[str], np.ndarray],
+               output_length: Optional[int] = None) -> tf.Tensor:
+        """Encode inputs.
+
+        Args:
+            inputs: The strings to encode.
+            output_length: The length (dimensionality) of the encoded vectors.
+                Pads or truncates vectors to the same length.
+                If unspecified, vectors are padded to the max length.
+        """
+        if isinstance(inputs, str):
+            inputs = [inputs]
+
+        if isinstance(inputs, (list, tuple, np.ndarray)):
+            inputs = tf.convert_to_tensor(inputs)
+
+        outputs = []
+        flattened = tf.unstack(tf.reshape(inputs, [-1]))
+        for x in flattened:
+            value = x.numpy().decode()
+            outputs.append(self._encode_string(value))
+
+        # Compute length
+        if output_length is None:
+            output_length = max(len(x) for x in outputs)
+
+        # Pad or truncate encoded vectors
+        pad_token_index = self.lookup_token(self.pad_token)
+        for i, x in enumerate(outputs):
+            n = len(x)
+            if output_length < n:
+                # Truncate the output to output_length
+                outputs[i] = x[:output_length]
+            else:
+                # Pad the output
+                pad_length = output_length - n
+                outputs[i] = x + [pad_token_index] * pad_length
+
+        outputs = tf.convert_to_tensor(outputs)
+        if outputs.shape[0] == 1:
+            outputs = tf.squeeze(outputs, 0)
+        return tf.stack(outputs)
+
+    def _encode_string(self, input: str) -> List[str]:
+        """Vectorize a string."""
+        tokens = self._tokenize_string(input)
+        return [self.lookup_token(token) for token in tokens]
+
+    def lookup_token(self, token: str) -> int:
+        """Return the index of the token."""
+        if token not in self._vocabulary:
+            return self._vocabulary[self.unknown_token]
+        return self._vocabulary[token]
+
+    # def decode(self, inputs: Union[List[str], List[List[str]]]) -> Union[str, List[str]]:
+    #     """Decode inputs."""
+    #     if all(not isinstance(i, list) for i in inputs):
+    #         return self.
+
+    # @property
+    # def vocabulary(self) -> Dict[str, int]:
+    #     """Return a dictionary mapping a string (word) to its encoded index."""
+    #     return self._vocabulary
+
+    # @property
+    # def inverse_vocabulary(self) -> List[str]:
+    #     """Return a list of strings, where the i-th element of the
+    #     list corresponds to the word with encoded index i.
+    #     """
+    #     return self._inverse_vocabulary
+
+
 def load_dataset(filenames: List[Union[Path, str]],
                  window_size: int, n_negative_samples: int,
-                 compression_type: Optional[str] = None,
                  max_vocab_size: Optional[int] = None,
                  sequence_length: Optional[int] = None,
                  batch_size: Optional[int] = 1024,
@@ -204,12 +414,12 @@ def load_dataset(filenames: List[Union[Path, str]],
 
     Args:
         filenames: A list of filenames to load from.
+            It is expected that these are text files.
         window_size: The size of the sliding window used to construct sample pairs.
         n_negative_samples: The number of negative samples to generate per
             positive context word. Mikolov, et. al. showed that for small
             datasets, values between 5 and 20 (inclusive) work best, whereas
             for large datasets, values between 2 and 5 (inclusive) suffice.
-        compression_type: One of "" (no compression), "ZLIB", or "GZIP".
         max_vocab_size: The maximum number of tokens in the vocabulary.
             If not specified, there is no limit on the number of tokens.
         sequence_length: The length of each line after tokenization and
@@ -220,22 +430,9 @@ def load_dataset(filenames: List[Union[Path, str]],
         vectorization_batch_size: The number of lines to feed into the
             TextVectorization layer at a time.
     """
-    def _remove_empty(x: tf.Tensor) -> tf.Tensor:
-        """Filter out empty strings from the given string tensor."""
-        # Convert the string tensor to a boolean tensor (where each string element
-        # is replaced with True if it is not empty, or False otherwise).
-        #
-        # This is a nice Python trick, where empty strings (and zero and None values)
-        # are treated as a False when converted to booleans.
-        return tf.cast(tf.strings.length(x), bool)
-
-    # Load the files using a TextLineDataset object, which will automatically
-    # decompress the files (if needed) and split them into lines.
-    text_dataset = tf.data.TextLineDataset(
-        # TensorFlow can't handle pathlib.Path instances, so we convert to str.
-        filenames=[str(x) for x in filenames],
-        compression_type=compression_type
-    ).filter(_remove_empty)
+    # Load the files and read non-empty lines.
+    lines = read_lines(filenames)
+    text_dataset = tf.data.Dataset.from_tensor_slices(lines)
 
     # The TextVectorization layer will create a vocabulary from a string tensor.
     # In a nut shell, it standardises the data (lower and strip punctuation),
@@ -248,7 +445,7 @@ def load_dataset(filenames: List[Union[Path, str]],
     # Apply our data onto the vectorizer. Now, we can pass strings into the vectorizer
     # and it will give us vectors for use in our model.
     start_time = time.time()
-    vectorizer.adapt(text_dataset.batch(vectorization_batch_size))
+    vectorizer.adapt(lines)
     vectorizer_elapsed = time.time() - start_time
 
     # vocabulary is a list of strings, allowing us to lookup words by encoded index.
@@ -256,6 +453,7 @@ def load_dataset(filenames: List[Union[Path, str]],
     # (which is used as a padding token). Hence, word indices start at 1.
     vocabulary = vectorizer.get_vocabulary()
     vocab_size = len(vocabulary)
+    print(vocabulary[:100])
     logger.info(f'Created vocabulary from {filenames} (took {vectorizer_elapsed:.2f} seconds). '
                 f'Vocabulary size: {vocab_size} words.')
 
@@ -267,11 +465,21 @@ def load_dataset(filenames: List[Union[Path, str]],
     # A flag that tells TensorFlow to tune dataset pipeline parameters automatically.
     AUTOTUNE = tf.data.experimental.AUTOTUNE
     # Vectorize text_dataset into dataset_vectors
+    x = next(text_dataset.batch(1024).as_numpy_iterator())
+    print(tf.expand_dims(x, -1))
+    print(vectorizer(tf.expand_dims(x, -1)))
+
+    print(vectorizer('this is a quick test!'))
+    print(vectorizer(['this is a quick test!', 'test', 'quick!']))
+    print(vectorizer([['this is a quick test!'], ['quick'], ['test']]))
+
     dataset_vectors = text_dataset.batch(1024).prefetch(AUTOTUNE).map(_vectorize_func).unbatch()
 
     logger.info('Creating training data...This may take a while!')
     # Make the training data from sequences
     sequences = dataset_vectors.as_numpy_iterator()
+    for seq in list(sequences)[:5]:
+        print(f"{seq} => {[vocabulary[i] for i in seq]}")
     targets, contexts, labels = make_training_data(
         sequences,
         window_size,
