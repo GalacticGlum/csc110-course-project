@@ -329,6 +329,23 @@ class Tokenizer:
             return frequencies[0]
         return tuple(frequencies)
 
+    def get_index(self, token: str) -> int:
+        """Return the index of the given token.
+        If the given token is out-of-the-vocabulary, the index of the
+        unknown token is returned.
+        """
+        if token not in self._vocabulary:
+            return self._vocabulary[self.unknown_token]
+        return self._vocabulary[token]
+
+    def get_token(self, index: int) -> str:
+        """Return the token corresponding to the given token.
+        If the given index is out-of-the-vocabulary, the unknown token is returned.
+        """
+        if index >= len(self._inverse_vocabulary):
+            return self.get_index(self.unknown_token)
+        return self._inverse_vocabulary[index]
+
     def encode(self, inputs: Union[str, tf.Tensor, List[str], Tuple[str], np.ndarray],
                output_length: Optional[int] = None) -> tf.Tensor:
         """Encode inputs.
@@ -356,7 +373,7 @@ class Tokenizer:
             output_length = max(len(x) for x in outputs)
 
         # Pad or truncate encoded vectors
-        pad_token_index = self.lookup_token(self.pad_token)
+        pad_token_index = self.get_index(self.pad_token)
         for i, x in enumerate(outputs):
             n = len(x)
             if output_length < n:
@@ -373,32 +390,25 @@ class Tokenizer:
         return tf.stack(outputs)
 
     def _encode_string(self, input: str) -> List[str]:
-        """Vectorize a string."""
+        """Encode a string.
+
+        Args:
+            input: The string to encode.
+        """
         tokens = self._tokenize_string(input)
-        return [self.lookup_token(token) for token in tokens]
+        return [self.get_index(token) for token in tokens]
 
-    def lookup_token(self, token: str) -> int:
-        """Return the index of the token."""
-        if token not in self._vocabulary:
-            return self._vocabulary[self.unknown_token]
-        return self._vocabulary[token]
+    @property
+    def vocabulary(self) -> Dict[str, int]:
+        """Return a dictionary mapping a string (word) to its encoded index."""
+        return self._vocabulary
 
-    # def decode(self, inputs: Union[List[str], List[List[str]]]) -> Union[str, List[str]]:
-    #     """Decode inputs."""
-    #     if all(not isinstance(i, list) for i in inputs):
-    #         return self.
-
-    # @property
-    # def vocabulary(self) -> Dict[str, int]:
-    #     """Return a dictionary mapping a string (word) to its encoded index."""
-    #     return self._vocabulary
-
-    # @property
-    # def inverse_vocabulary(self) -> List[str]:
-    #     """Return a list of strings, where the i-th element of the
-    #     list corresponds to the word with encoded index i.
-    #     """
-    #     return self._inverse_vocabulary
+    @property
+    def inverse_vocabulary(self) -> List[str]:
+        """Return a list of strings, where the i-th element of the
+        list corresponds to the word with encoded index i.
+        """
+        return self._inverse_vocabulary
 
 
 def load_dataset(filenames: List[Union[Path, str]],
