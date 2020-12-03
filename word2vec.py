@@ -102,7 +102,8 @@ def make_skipgram_pairs(sequence: List[int], window_size: int,
 def make_training_data(sequences: List[List[int]], window_size: int,
                        n_negative_samples: int, vocab_size: int,
                        use_subsampling: Optional[bool] = True,
-                       show_progress_bar: Optional[bool] = True) \
+                       show_progress_bar: Optional[bool] = True,
+                       progress_bar_total: Optional[int] = None) \
         -> Tuple[List[int], List[int], List[int]]:
     """Make training data for a skip-gram language model.
 
@@ -120,6 +121,8 @@ def make_training_data(sequences: List[List[int]], window_size: int,
         use_subsampling: Whether to subsample words based on frequency probabilities.
             If False, words are uniformly sampled from the vocabulary.
         show_progress_bar: Whether to show a progress bar while the jobs run.
+        progress_bar_total: Total number of iterations for the progress bar.
+            This is purely aesthetic.
 
     Preconditions:
         - subsampling_table is None or len(subsampling_table) == vocab_size
@@ -137,7 +140,7 @@ def make_training_data(sequences: List[List[int]], window_size: int,
     else:
         sampling_table = None
 
-    for sequence in tqdm(sequences, disable=not show_progress_bar):
+    for sequence in tqdm(sequences, disable=not show_progress_bar, total=progress_bar_total):
         skipgram_pairs = make_skipgram_pairs(
             sequence,
             window_size,
@@ -241,7 +244,8 @@ class Tokenizer:
             unknown_token: Token to represent words not in the dataset.
                 This token has index 1 in the vocabulary.
             max_tokens: The maximum number of tokens in the vocabulary.
-            If None, there is no max on the tokens.
+                If None, there is no max on the tokens. This is including
+                the number of default tokens in the tokenizer.
         """
         self._counter = Counter()
         self._remove_punctuation_trans = str.maketrans('', '', string.punctuation)
@@ -288,7 +292,9 @@ class Tokenizer:
             self._counter[token] += 1
 
         self._initialise_defaults()
-        most_common_tokens = self._counter.most_common(self.max_tokens)
+
+        num_default_tokens = len(self._vocabulary)
+        most_common_tokens = self._counter.most_common(self.max_tokens - num_default_tokens)
         for token, _ in most_common_tokens:
             self._vocabulary[token] = len(self._vocabulary)
             self._inverse_vocabulary.append(token)
@@ -416,8 +422,7 @@ def load_dataset(filenames: List[Union[Path, str]],
                  max_vocab_size: Optional[int] = None,
                  sequence_length: Optional[int] = None,
                  batch_size: Optional[int] = 1024,
-                 shuffle_buffer_size: Optional[int] = 10000,
-                 vectorization_batch_size: Optional[int] = 1024) \
+                 shuffle_buffer_size: Optional[int] = 10000) \
         -> tf.data.Dataset:
     """
     Load a corpus from the given files as a tf.data.Dataset object.
@@ -437,8 +442,6 @@ def load_dataset(filenames: List[Union[Path, str]],
             If not specified, there is no limit on the sequence length.
         batch_size: The size of a single batch.
         shuffle_buffer_size: The size of the buffer used to shuffle data.
-        vectorization_batch_size: The number of lines to feed into the
-            TextVectorization layer at a time.
     """
     # Load the files and read non-empty lines.
     lines = read_lines(filenames)
@@ -481,7 +484,8 @@ def load_dataset(filenames: List[Union[Path, str]],
         sequences,
         window_size,
         n_negative_samples,
-        vocab_size
+        vocab_size,
+        progress_bar_total=len(lines)
     )
 
     logger.info('Converting training data to tf.data.Dataset...')
