@@ -384,7 +384,7 @@ class Tokenizer:
                 pad_length = output_length - n
                 outputs[i] = x + [pad_token_index] * pad_length
 
-        outputs = tf.convert_to_tensor(outputs)
+        outputs = tf.convert_to_tensor(outputs, dtype=tf.int64)
         if outputs.shape[0] == 1:
             outputs = tf.squeeze(outputs, 0)
         return tf.stack(outputs)
@@ -442,54 +442,41 @@ def load_dataset(filenames: List[Union[Path, str]],
     """
     # Load the files and read non-empty lines.
     lines = read_lines(filenames)
-    text_dataset = tf.data.Dataset.from_tensor_slices(lines)
 
-    # The TextVectorization layer will create a vocabulary from a string tensor.
+    # The Tokenizer will create a vocabulary from strings.
     # In a nut shell, it standardises the data (lower and strip punctuation),
     # tokenizes it, and then assigns an integer index to each word.
-    vectorizer = TextVectorization(
-        max_tokens=max_vocab_size,
-        output_sequence_length=sequence_length
+    tokenizer = Tokenizer(max_tokens=max_vocab_size)
+
+    # Apply the data to tokenizer to build a vocabulary.
+    start_time = time.time()
+    tokenizer.update(lines)
+    tokenizer_elapsed = time.time() - start_time
+
+    vocab_size = len(tokenizer.inverse_vocabulary)
+    logger.info(
+        f'Created vocabulary from {filenames} (took {tokenizer_elapsed:.2f} seconds). '
+        f'Vocabulary size: {vocab_size} words.'
     )
 
-    # Apply our data onto the vectorizer. Now, we can pass strings into the vectorizer
-    # and it will give us vectors for use in our model.
-    start_time = time.time()
-    vectorizer.adapt(lines)
-    vectorizer_elapsed = time.time() - start_time
-
-    # vocabulary is a list of strings, allowing us to lookup words by encoded index.
-    # By convention, the first element of the vocabulary is an empty string
-    # (which is used as a padding token). Hence, word indices start at 1.
-    vocabulary = vectorizer.get_vocabulary()
-    vocab_size = len(vocabulary)
-    print(vocabulary[:100])
-    logger.info(f'Created vocabulary from {filenames} (took {vectorizer_elapsed:.2f} seconds). '
-                f'Vocabulary size: {vocab_size} words.')
-
-    def _vectorize_func(x):
-        # Convert string tensors to int tensors (representing words encoded by the vectorizer)
+    def _encode_func(x: tf.Tensor) -> tf.Tensor:
+        """Convert string tensors to int tensors using the tokenizer."""
         x = tf.expand_dims(x, -1)
-        return tf.squeeze(vectorizer(x))
+        # Wrap the tokenizer encode function in a TensorFlow eager op.
+        # This lets us evaluate tensors eagerly, which the tokenizer needs to do.
+        return tf.squeeze(tf.py_function(
+            tokenizer.encode, [x], tf.int64
+        ))
 
     # A flag that tells TensorFlow to tune dataset pipeline parameters automatically.
     AUTOTUNE = tf.data.experimental.AUTOTUNE
-    # Vectorize text_dataset into dataset_vectors
-    x = next(text_dataset.batch(1024).as_numpy_iterator())
-    print(tf.expand_dims(x, -1))
-    print(vectorizer(tf.expand_dims(x, -1)))
+    dataset_lines = tf.data.Dataset.from_tensor_slices(lines)
+    # Encode lines into sequences
+    dataset_sequences = dataset_lines.batch(1024).prefetch(AUTOTUNE).map(_encode_func).unbatch()
+    sequences = dataset_sequences.as_numpy_iterator()
 
-    print(vectorizer('this is a quick test!'))
-    print(vectorizer(['this is a quick test!', 'test', 'quick!']))
-    print(vectorizer([['this is a quick test!'], ['quick'], ['test']]))
-
-    dataset_vectors = text_dataset.batch(1024).prefetch(AUTOTUNE).map(_vectorize_func).unbatch()
-
-    logger.info('Creating training data...This may take a while!')
     # Make the training data from sequences
-    sequences = dataset_vectors.as_numpy_iterator()
-    for seq in list(sequences)[:5]:
-        print(f"{seq} => {[vocabulary[i] for i in seq]}")
+    logger.info('Creating training data...This may take a while!')
     targets, contexts, labels = make_training_data(
         sequences,
         window_size,
@@ -502,7 +489,6 @@ def load_dataset(filenames: List[Union[Path, str]],
     dataset = tf.data.Dataset.from_tensor_slices(((targets, contexts), labels))
     dataset = dataset.shuffle(shuffle_buffer_size).batch(batch_size, drop_remainder=True)
     dataset = dataset.cache().prefetch(buffer_size=AUTOTUNE)
-    print(dataset)
     return dataset
 
 if __name__ == '__main__':
