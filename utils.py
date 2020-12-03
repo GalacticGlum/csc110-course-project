@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
 
-def parallel_map(iterables: list, function: callable, n_jobs: Optional[int] = 16,
+def parallel_map(iterables: Union[list, iter], function: callable, n_jobs: Optional[int] = 16,
                  use_kwargs: Optional[bool] = False, front_num: Optional[int] = 3,
                  show_progress_bar: Optional[bool] = True, initial_value: Optional[list] = None,
                  raise_errors: Optional[bool] = False, include_errors: Optional[bool] = True,
@@ -35,12 +35,20 @@ def parallel_map(iterables: list, function: callable, n_jobs: Optional[int] = 16
         - n_jobs >= 1
         - front_num >= 0
     """
-    front = [function(**a) if use_kwargs else function(a) for a in iterables[:front_num]]
+    if isinstance(iterables, list):
+        front = [function(**a) if use_kwargs else function(a) for a in iterables[:front_num]]
+        iterables = iterables[front_num:]
+    else:
+        front = []
+        for _ in range(front_num):
+            a = next(iterables)
+            front.append(function(**a) if use_kwargs else function(a))
+
     # If n_jobs == 1, then we are not parallelising, run all elements serially.
     if n_jobs == 1:
         output = front + [
             function(**a) if use_kwargs else function(a)
-            for a in tqdm(iterables[front_num:])
+            for a in tqdm(iterables)
         ]
 
         return output if return_output else None
@@ -48,7 +56,7 @@ def parallel_map(iterables: list, function: callable, n_jobs: Optional[int] = 16
     with ThreadPoolExecutor(max_workers=n_jobs) as pool:
         futures = [
             pool.submit(function, **a) if use_kwargs else
-            pool.submit(function, a) for a in iterables[front_num:]
+            pool.submit(function, a) for a in iterables
         ]
 
         for _ in tqdm(as_completed(futures), total=len(futures), unit='it',
