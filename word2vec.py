@@ -21,195 +21,6 @@ from logger import logger
 from tensorflow.keras.layers.experimental.preprocessing import TextVectorization
 
 
-def make_skipgram_pairs(sequence: List[int], window_size: int,
-                        sampling_table: Optional[np.ndarray] = None,
-                        skip_zero: Optional[bool] = True,
-                        skip_func: Optional[callable] = None) \
-        -> List[Tuple[int, int]]:
-    """
-    Make positive example pairs for a skip-gram language model.
-
-    Return a list of 2-element tuples consisting of the target and
-    context word (in the neighbourhood of the given window size).
-
-    Args:
-        sequence: A sequence of words encoded as a list of integers.
-        window_size: The size of the sliding window (on each side of the
-            target word) used to construct sample pairs.
-
-            For every index i in the sequence, contexts words are chosen in
-            the neigbourhood defined by [i - window_size, i + window_size].
-        sampling_table: The probability of sampling words by frequency.
-            The i-th element of the table gives the probability of sampling
-            the word with (encoded) index, i, in the vocabulary.
-
-            For example, if "the" is encoded as 7, then sampling_table[7]
-            should give the sampling probability for that word ("the").
-        skip_zero: Whether to skip words with index 0 in the sequence. By convention,
-            we assume that the vocabulary is one-indexed, and that 0 is not a valid
-            word index. If False, 0 is treated as a valid word index.
-        skip_func: A filtering function which takes in a word as input and returns a
-            boolean indicating whether it should be skipped.
-
-    Preconditions:
-        - window_size >= 0
-
-    >>> sequence = [4, 3, 5, 5, 2, 0, 0]
-    >>> expected = [(4, 3), (4, 5),\
-                    (3, 4), (3, 5), (3, 5),\
-                    (5, 4), (5, 3), (5, 5), (5, 2),\
-                    (5, 3), (5, 5), (5, 2),\
-                    (2, 5), (2, 5)]
-    >>> expected == make_skipgram_pairs(sequence, 2)
-    True
-    >>> make_skipgram_pairs([1, 2], 0)
-    []
-    """
-    def _skip_word(x):
-        """Return whether to skip the word."""
-        return skip_zero and not x or \
-               skip_func is not None and skip_func(x)
-
-    n = len(sequence)
-    pairs = []
-    for i, target_word in enumerate(sequence):
-        if _skip_word(target_word):
-            continue
-
-        if sampling_table is not None:
-            p = sampling_table[target_word]
-            # Sample iff random.random() < p.
-            if random.random() >= p:
-                continue
-
-        start_index = max(0, i - window_size)
-        end_index = min(n, i + window_size + 1)
-        # Iterate through the neighbourhood the target word.
-        for j in range(start_index, end_index):
-            # We don't want the words to ever be the same!
-            if i == j:
-                continue
-
-            # Create new (target, context) pair.
-            context_word = sequence[j]
-            if _skip_word(context_word):
-                continue
-
-            pairs.append((target_word, context_word))
-
-    return pairs
-
-
-def make_training_data(sequences: List[List[int]], window_size: int,
-                       n_negative_samples: int, vocab_size: int,
-                       use_subsampling: Optional[bool] = True,
-                       show_progress_bar: Optional[bool] = True,
-                       progress_bar_total: Optional[int] = None) \
-        -> Tuple[List[int], List[int], List[int]]:
-    """Make training data for a skip-gram language model.
-
-    Return a 3-element tuple consisting of the target words, context words,
-    and labels.
-
-    Args:
-        sequences: A list of vectorised word token sequences.
-        window_size: The size of the sliding window used to construct sample pairs.
-        n_negative_samples: The number of negative samples to generate per
-            positive context word. Mikolov, et. al. showed that for small
-            datasets, values between 5 and 20 (inclusive) work best, whereas
-            for large datasets, values between 2 and 5 (inclusive) suffice.
-        vocab_size: The nubmer of words (tokens) in the model vocabulary.
-        use_subsampling: Whether to subsample words based on frequency probabilities.
-            If False, words are uniformly sampled from the vocabulary.
-        show_progress_bar: Whether to show a progress bar while the jobs run.
-        progress_bar_total: Total number of iterations for the progress bar.
-            This is purely aesthetic.
-
-    Preconditions:
-        - subsampling_table is None or len(subsampling_table) == vocab_size
-    """
-    targets, contexts, labels = [], [], []
-    # TODO:The make_sampling_table functions gives an array where the i-th
-    # element gives the probabiltiy of sampling the i-th most common word under
-    # the assumption that the word frequency follows a Zipf-like distribution.
-    #
-    # For natural text, this is often a good enough approximation for the true
-    # word frequency; however, we can do better by actually computing the frequency
-    # of each word in the vocabulary.
-    if use_subsampling:
-        sampling_table = tf.keras.preprocessing.sequence.make_sampling_table(vocab_size)
-    else:
-        sampling_table = None
-
-    for sequence in tqdm(sequences, disable=not show_progress_bar, total=progress_bar_total):
-        skipgram_pairs = make_skipgram_pairs(
-            sequence,
-            window_size,
-            sampling_table=sampling_table
-        )
-
-        # Create n_negative_samples for each positve (target, context) word-pair,
-        # by sampling random words from the vocabulary (excluding the context word).
-        #
-        # A negative sample refers to a (target, not_context) word-pair where not_context
-        # is NOT the context word of the positive sample (i.e. not_context != context).
-        #
-        # We sample words from the vocabulary according to a Zipfian distribution.
-        # TODO: The intuition towards negative sampling, as proposed by Mikolov et. al.
-        # is to sample words from the vocabulary from a distribution designed to favour
-        # more frequent words. The probability of sampling a word i is given by:
-        #   P(w_i) = [f(w_i)^lambda] / sum(f(w_j)^lambda for j = 0 to n),
-        # where n is the vocabulary size, f : N -> N, gives the frequency of each word
-        # in the vocabulary, and lambda is a hyperparameter (set to 3/4 in the paper).
-        #
-        # As mentioned above, we can approximate the frequency using a Zipf-like distribution
-        # for natural text. But, we can't beat actually knowing the frequency of each word.
-        for target_word, context_word in skipgram_pairs:
-            # Create a tensor of shape (1, 1) that contains the context word.
-            # This is the shape expected by log_uniform_candidate_sampler.
-            true_classes = tf.expand_dims(tf.constant([context_word], dtype=tf.int64), 1)
-            # Sample a random word (index) from the range [0, vocab_size) excluding the
-            # elements of the true_classes tensor (in our case, the context word).
-            #
-            # Returns an int tensor with shape (n_negative_samples,) containing the sampled values.
-            negative_samples, _, _ = tf.random.log_uniform_candidate_sampler(
-                true_classes=true_classes,
-                num_true=1,
-                num_sampled=n_negative_samples,
-                unique=True,  # Sample without replacement
-                range_max=vocab_size,
-            )
-
-            # Expand dimension of negaitve samples to match true_classes
-            # We need to do this for concatenation to work (outer dims need to match).
-            negative_samples = tf.expand_dims(negative_samples, 1)
-            # Concatenate the negative samples to the positive sample
-            context = tf.concat([true_classes, negative_samples], 0)
-            # label is a int tensor of the form 1, 0, ..., 0, where the element at index i
-            # indicates whether context[i] is a positive (1) or negative (0) sample.
-            label = tf.constant([1] + [0] * n_negative_samples, dtype=tf.int64)
-
-            targets.append(target_word)
-            contexts.append(context)
-            labels.append(label)
-
-    return targets, contexts, labels
-
-
-def read_lines(filenames: List[Union[Path, str]]) -> List[str]:
-    """Return a list of non-empty lines from the given files."""
-    all_lines = []
-    for file in filenames:
-        with open(file) as fp:
-            lines = fp.read().splitlines()
-            # Filter out empty lines
-            #
-            # This is a nice Python trick, where empty strings
-            # are treated as a False when converted to booleans.
-            all_lines.extend([line for line in lines if line])
-    return all_lines
-
-
 class Tokenizer:
     """Text tokenizer.
 
@@ -454,15 +265,215 @@ class Tokenizer:
             self._load_state(json.load(file))
 
 
+def make_skipgram_pairs(sequence: List[int], window_size: int,
+                        sampling_table: Optional[np.ndarray] = None,
+                        skip_zero: Optional[bool] = True,
+                        skip_func: Optional[callable] = None) \
+        -> List[Tuple[int, int]]:
+    """
+    Make positive example pairs for a skip-gram language model.
+
+    Return a list of 2-element tuples consisting of the target and
+    context word (in the neighbourhood of the given window size).
+
+    Args:
+        sequence: A sequence of words encoded as a list of integers.
+        window_size: The size of the sliding window (on each side of the
+            target word) used to construct sample pairs.
+
+            For every index i in the sequence, contexts words are chosen in
+            the neigbourhood defined by [i - window_size, i + window_size].
+        sampling_table: The probability of sampling words by frequency.
+            The i-th element of the table gives the probability of sampling
+            the word with (encoded) index, i, in the vocabulary.
+
+            For example, if "the" is encoded as 7, then sampling_table[7]
+            should give the sampling probability for that word ("the").
+        skip_zero: Whether to skip words with index 0 in the sequence. By convention,
+            we assume that the vocabulary is one-indexed, and that 0 is not a valid
+            word index. If False, 0 is treated as a valid word index.
+        skip_func: A filtering function which takes in a word as input and returns a
+            boolean indicating whether it should be skipped.
+
+    Preconditions:
+        - window_size >= 0
+
+    >>> sequence = [4, 3, 5, 5, 2, 0, 0]
+    >>> expected = [(4, 3), (4, 5),\
+                    (3, 4), (3, 5), (3, 5),\
+                    (5, 4), (5, 3), (5, 5), (5, 2),\
+                    (5, 3), (5, 5), (5, 2),\
+                    (2, 5), (2, 5)]
+    >>> expected == make_skipgram_pairs(sequence, 2)
+    True
+    >>> make_skipgram_pairs([1, 2], 0)
+    []
+    """
+    def _skip_word(x):
+        """Return whether to skip the word."""
+        return skip_zero and not x or \
+               skip_func is not None and skip_func(x)
+
+    n = len(sequence)
+    pairs = []
+    for i, target_word in enumerate(sequence):
+        if _skip_word(target_word):
+            continue
+
+        if sampling_table is not None:
+            p = sampling_table[target_word]
+            # Sample iff random.random() < p.
+            if random.random() >= p:
+                continue
+
+        start_index = max(0, i - window_size)
+        end_index = min(n, i + window_size + 1)
+        # Iterate through the neighbourhood the target word.
+        for j in range(start_index, end_index):
+            # We don't want the words to ever be the same!
+            if i == j:
+                continue
+
+            # Create new (target, context) pair.
+            context_word = sequence[j]
+            if _skip_word(context_word):
+                continue
+
+            pairs.append((target_word, context_word))
+
+    return pairs
+
+
+def make_training_data(sequences: List[List[int]], window_size: int,
+                       n_negative_samples: int, vocab_size: int,
+                       use_subsampling: Optional[bool] = True,
+                       show_progress_bar: Optional[bool] = True,
+                       progress_bar_total: Optional[int] = None) \
+        -> Tuple[List[int], List[int], List[int]]:
+    """Make training data for a skip-gram language model.
+
+    Return a 3-element tuple consisting of the target words, context words,
+    and labels.
+
+    Args:
+        sequences: A list of vectorised word token sequences.
+        window_size: The size of the sliding window used to construct sample pairs.
+        n_negative_samples: The number of negative samples to generate per
+            positive context word. Mikolov, et. al. showed that for small
+            datasets, values between 5 and 20 (inclusive) work best, whereas
+            for large datasets, values between 2 and 5 (inclusive) suffice.
+        vocab_size: The nubmer of words (tokens) in the model vocabulary.
+        use_subsampling: Whether to subsample words based on frequency probabilities.
+            If False, words are uniformly sampled from the vocabulary.
+        show_progress_bar: Whether to show a progress bar while the jobs run.
+        progress_bar_total: Total number of iterations for the progress bar.
+            This is purely aesthetic.
+
+    Preconditions:
+        - subsampling_table is None or len(subsampling_table) == vocab_size
+    """
+    targets, contexts, labels = [], [], []
+    # TODO:The make_sampling_table functions gives an array where the i-th
+    # element gives the probabiltiy of sampling the i-th most common word under
+    # the assumption that the word frequency follows a Zipf-like distribution.
+    #
+    # For natural text, this is often a good enough approximation for the true
+    # word frequency; however, we can do better by actually computing the frequency
+    # of each word in the vocabulary.
+    if use_subsampling:
+        sampling_table = tf.keras.preprocessing.sequence.make_sampling_table(vocab_size)
+    else:
+        sampling_table = None
+
+    for sequence in tqdm(sequences, disable=not show_progress_bar, total=progress_bar_total):
+        skipgram_pairs = make_skipgram_pairs(
+            sequence,
+            window_size,
+            sampling_table=sampling_table
+        )
+
+        # Create n_negative_samples for each positve (target, context) word-pair,
+        # by sampling random words from the vocabulary (excluding the context word).
+        #
+        # A negative sample refers to a (target, not_context) word-pair where not_context
+        # is NOT the context word of the positive sample (i.e. not_context != context).
+        #
+        # We sample words from the vocabulary according to a Zipfian distribution.
+        # TODO: The intuition towards negative sampling, as proposed by Mikolov et. al.
+        # is to sample words from the vocabulary from a distribution designed to favour
+        # more frequent words. The probability of sampling a word i is given by:
+        #   P(w_i) = [f(w_i)^lambda] / sum(f(w_j)^lambda for j = 0 to n),
+        # where n is the vocabulary size, f : N -> N, gives the frequency of each word
+        # in the vocabulary, and lambda is a hyperparameter (set to 3/4 in the paper).
+        #
+        # As mentioned above, we can approximate the frequency using a Zipf-like distribution
+        # for natural text. But, we can't beat actually knowing the frequency of each word.
+        for target_word, context_word in skipgram_pairs:
+            # Create a tensor of shape (1, 1) that contains the context word.
+            # This is the shape expected by log_uniform_candidate_sampler.
+            true_classes = tf.expand_dims(tf.constant([context_word], dtype=tf.int64), 1)
+            # Sample a random word (index) from the range [0, vocab_size) excluding the
+            # elements of the true_classes tensor (in our case, the context word).
+            #
+            # Returns an int tensor with shape (n_negative_samples,) containing the sampled values.
+            negative_samples, _, _ = tf.random.log_uniform_candidate_sampler(
+                true_classes=true_classes,
+                num_true=1,
+                num_sampled=n_negative_samples,
+                unique=True,  # Sample without replacement
+                range_max=vocab_size,
+            )
+
+            # Expand dimension of negaitve samples to match true_classes
+            # We need to do this for concatenation to work (outer dims need to match).
+            negative_samples = tf.expand_dims(negative_samples, 1)
+            # Concatenate the negative samples to the positive sample
+            context = tf.concat([true_classes, negative_samples], 0)
+            # label is a int tensor of the form 1, 0, ..., 0, where the element at index i
+            # indicates whether context[i] is a positive (1) or negative (0) sample.
+            label = tf.constant([1] + [0] * n_negative_samples, dtype=tf.int64)
+
+            targets.append(target_word)
+            contexts.append(context)
+            labels.append(label)
+
+    return targets, contexts, labels
+
+
+def read_lines(filenames: List[Union[Path, str]]) -> List[str]:
+    """Return a list of non-empty lines from the given files."""
+    all_lines = []
+    for file in filenames:
+        with open(file) as fp:
+            lines = fp.read().splitlines()
+            # Filter out empty lines
+            #
+            # This is a nice Python trick, where empty strings
+            # are treated as a False when converted to booleans.
+            all_lines.extend([line for line in lines if line])
+    return all_lines
+
+
 def load_dataset(filenames: List[Union[Path, str]],
-                 window_size: int, n_negative_samples: int,
+                 window_size: int,
+                 n_negative_samples: int,
                  max_vocab_size: Optional[int] = None,
                  sequence_length: Optional[int] = None,
                  batch_size: Optional[int] = 1024,
                  shuffle_buffer_size: Optional[int] = 10000) \
-        -> tf.data.Dataset:
+        -> Tuple[tf.data.Dataset, Tokenizer]:
     """
     Load a corpus from the given files as a tf.data.Dataset object.
+
+    Return a tf.data.Dataset consisting of feature-label pairs of the
+    form ((target, context), label), and a Tokenizer instance fitted
+    on the dataset.
+
+    The shape of the dataset is [
+        ((batch_size,),
+         (batch_size, 1 + n_negative_samples, 1)),
+         (batch_size, 1 + n_negative_samples)
+    ].
 
     Args:
         filenames: A list of filenames to load from.
@@ -503,6 +514,7 @@ def load_dataset(filenames: List[Union[Path, str]],
         f'Vocabulary size: {vocab_size} words.'
     )
 
+    # Encode lines into sequences
     def _encode_func(x: tf.Tensor) -> tf.Tensor:
         """Convert string tensors to int tensors using the tokenizer."""
         x = tf.expand_dims(x, -1)
@@ -512,11 +524,11 @@ def load_dataset(filenames: List[Union[Path, str]],
             tokenizer.encode, [x], tf.int64
         ))
 
-    # A flag that tells TensorFlow to tune dataset pipeline parameters automatically.
-    AUTOTUNE = tf.data.experimental.AUTOTUNE
     dataset_lines = tf.data.Dataset.from_tensor_slices(lines)
-    # Encode lines into sequences
-    dataset_sequences = dataset_lines.batch(1024).prefetch(AUTOTUNE).map(_encode_func).unbatch()
+    dataset_sequences = dataset_lines.batch(1024)
+        .prefetch(tf.data.experimental.AUTOTUNE) \
+        .map(_encode_func).unbatch()
+
     sequences = dataset_sequences.as_numpy_iterator()
 
     # Make the training data from sequences
@@ -532,9 +544,12 @@ def load_dataset(filenames: List[Union[Path, str]],
     logger.info('Converting training data to tf.data.Dataset...')
     # Load the training data into a tf.data.Dataset
     dataset = tf.data.Dataset.from_tensor_slices(((targets, contexts), labels))
+    # Shuffle and batch data
     dataset = dataset.shuffle(shuffle_buffer_size).batch(batch_size, drop_remainder=True)
-    dataset = dataset.cache().prefetch(buffer_size=AUTOTUNE)
-    return dataset
+    # Cache and prefetch for performance
+    dataset = dataset.cache().prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+
+    return dataset, tokenizer
 
 if __name__ == '__main__':
     import python_ta
