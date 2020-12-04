@@ -443,6 +443,10 @@ def load_dataset(filenames: List[Union[Path, str]],
         batch_size: The size of a single batch.
         shuffle_buffer_size: The size of the buffer used to shuffle data.
     """
+    # TODO: Gotta optimize this function!! Specifically with generating sequences.
+    # Loading in a 250MB dataset takes 5 hours! Might want to look into parallelising
+    # the sequence generation, or just reducing the dataset size.
+
     # Load the files and read non-empty lines.
     lines = read_lines(filenames)
 
