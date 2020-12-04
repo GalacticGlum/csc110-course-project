@@ -548,7 +548,6 @@ def load_dataset(filenames: List[Union[Path, str]],
     dataset = dataset.shuffle(shuffle_buffer_size).batch(batch_size, drop_remainder=True)
     # Cache and prefetch for performance
     dataset = dataset.cache().prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-
     return dataset, tokenizer
 
 if __name__ == '__main__':
