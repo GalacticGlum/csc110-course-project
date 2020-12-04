@@ -1,6 +1,7 @@
 """Implementation of the Word2Vec model architecture with subsampling and negative sampling."""
 
 import time
+import json
 import string
 import random
 from pathlib import Path
@@ -256,6 +257,18 @@ class Tokenizer:
 
         self._initialise_defaults()
 
+    @property
+    def vocabulary(self) -> Dict[str, int]:
+        """Return a dictionary mapping a string (word) to its encoded index."""
+        return self._vocabulary
+
+    @property
+    def inverse_vocabulary(self) -> List[str]:
+        """Return a list of strings, where the i-th element of the
+        list corresponds to the word with encoded index i.
+        """
+        return self._inverse_vocabulary
+
     def _initialise_defaults(self) -> None:
         """Initialise the default vocabulary and inverse vocabulary."""
         self._vocabulary = {self.pad_token: 0, self.unknown_token: 1}
@@ -293,8 +306,11 @@ class Tokenizer:
 
         self._initialise_defaults()
 
-        num_default_tokens = len(self._vocabulary)
-        most_common_tokens = self._counter.most_common(self.max_tokens - num_default_tokens)
+        n = self.max_tokens
+        if n is not None:
+            n -= len(self._vocabulary)
+
+        most_common_tokens = self._counter.most_common(n)
         for token, _ in most_common_tokens:
             self._vocabulary[token] = len(self._vocabulary)
             self._inverse_vocabulary.append(token)
@@ -404,17 +420,38 @@ class Tokenizer:
         tokens = self._tokenize_string(input)
         return [self.get_index(token) for token in tokens]
 
-    @property
-    def vocabulary(self) -> Dict[str, int]:
-        """Return a dictionary mapping a string (word) to its encoded index."""
-        return self._vocabulary
+    def _get_state(self) -> dict:
+        """Get the state of this tokenizer."""
+        return {
+            '_vocabulary': self._vocabulary,
+            '_inverse_vocabulary': self._inverse_vocabulary,
+            '_counter': self._counter,
+            'pad_token': self.pad_token,
+            'unknown_token': self.unknown_token,
+            'max_token': self.max_tokens
+        }
 
-    @property
-    def inverse_vocabulary(self) -> List[str]:
-        """Return a list of strings, where the i-th element of the
-        list corresponds to the word with encoded index i.
+    def _load_state(self, state: dict) -> None:
+        """Initialise this tokenizer from a state.
+
+        It is assumed that the state dictionary is of the
+        form returned by the _get_state method.
         """
-        return self._inverse_vocabulary
+        self.reset()
+        for key, value in state.items():
+            if key == '_counter':
+                value = Counter(value)
+            setattr(self, key, value)
+
+    def save(self, filepath: Union[str, Path]) -> None:
+        """Save the state of this tokenizer to a file."""
+        with open(filepath, 'w+') as file:
+            json.dump(self._get_state(), file)
+
+    def load(self, filepath: Union[str, Path]) -> None:
+        """Load a tokenizer from file."""
+        with open(filepath) as file:
+            self._load_state(json.load(file))
 
 
 def load_dataset(filenames: List[Union[Path, str]],
