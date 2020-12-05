@@ -4,6 +4,7 @@ import time
 import json
 import string
 import random
+import itertools
 from pathlib import Path
 from collections import Counter
 from typing import (
@@ -11,7 +12,8 @@ from typing import (
     List,
     Dict,
     Optional,
-    Union
+    Union,
+    Iterator
 )
 
 import numpy as np
@@ -34,20 +36,36 @@ class Tokenizer:
         - unknown_token: Token to represent words not in the dataset.
         - max_tokens: The maximum number of tokens in the vocabulary.
             If None, there is no max on the tokens.
+        - sample_threshold: A small value to offset the probabilities for
+            sampling any given word. This is the "t" variable in the distribution
+            given by Mikolov et. al. in their word2vec paper.
+        - min_word_frequency: The minimum frequency for words to be included in
+            the vocabulary.
     """
     # Private Instance Attributes:
     #   - _vocabulary: A dictionary mapping a string (word) to its encoded index.
-    #   - _inverse_vocabulary: A list of strings, where the i-th element of
-    #           the list corresponds to the word with encoded index i.
+    #   - _words: A list of strings, where the i-th element of
+    #       the list corresponds to the word with encoded index i.
+    #   - _frequencies: a list of integers, where the i-th element of the list
+    #       corresponds to frequency of the word with encoded index i.
     #   - _counter: Counts the occurences of words.
+    #   - _sampling_table: A list of floats giving the probability of sampling words.
+    #       The i-th element of the table gives the probability of sampling the word
+    #       whose encoded index is i.
+    #   - _corpus_size: The number of words in the corpus.
     #   - _remove_punctuation_trans: A translation for removing puntuation from a string.
     _vocabulary: Dict[str, int]
-    _inverse_vocabulary: List[str]
+    _words: List[str]
+    _frequencies: List[int]
     _counter: Counter
+    _sampling_table: List[float]
+    _corpus_size: int
     _remove_punctuation_trans: object
 
     def __init__(self, pad_token='', unknown_token='UNK',
-                 max_tokens: Optional[int] = None) -> None:
+                 max_tokens: Optional[int] = None,
+                 min_word_frequency: Optional[int] = 0,
+                 sample_threshold: Optional[float] = 1e-3) -> None:
         """Initialize this tokenizer.
 
         Args:
@@ -58,15 +76,41 @@ class Tokenizer:
             max_tokens: The maximum number of tokens in the vocabulary.
                 If None, there is no max on the tokens. This is including
                 the number of default tokens in the tokenizer.
+            min_word_frequency: The minimum frequency for words to be included
+                in the vocabulary.
+            sample_threshold: A small value to offset the probabilities for
+                sampling any given word. This is the "t" variable in the
+                distribution given by Mikolov et. al. in their word2vec paper.
         """
-        self._counter = Counter()
-        self._remove_punctuation_trans = str.maketrans('', '', string.punctuation)
-
         self.pad_token = pad_token
         self.unknown_token = unknown_token
         self.max_tokens = max_tokens
+        self.min_word_frequency = max(0, min_word_frequency)
+        self.sample_threshold = sample_threshold
 
+        self._counter = Counter()
+        self._remove_punctuation_trans = str.maketrans('', '', string.punctuation)
         self._initialise_defaults()
+
+    def _initialise_defaults(self, reset_counter: Optional[bool] = False) -> None:
+        """Initialise this tokenizer with a default vocabulary.
+
+        Args:
+            reset_counter: Whether to reset the counter.
+        """
+        self._vocabulary = {self.pad_token: 0, self.unknown_token: 1}
+        self._words = [self.pad_token, self.unknown_token]
+        # The first two tokens, pad an unknown, don't appear in the corpus.
+        self._frequencies = [0, 0]
+        self._sampling_table = []
+        self._corpus_size = 0
+
+        if reset_counter:
+            self._counter = Counter()
+
+    def reset(self) -> None:
+        """Reset this tokenizer."""
+        self._initialise_defaults(reset_counter=True)
 
     @property
     def vocabulary(self) -> Dict[str, int]:
@@ -74,96 +118,130 @@ class Tokenizer:
         return self._vocabulary
 
     @property
-    def inverse_vocabulary(self) -> List[str]:
-        """Return a list of strings, where the i-th element of the
-        list corresponds to the word with encoded index i.
+    def words(self) -> List[str]:
+        """Return a list of strings, where the i-th element of the list
+        corresponds to the word with encoded index i.
         """
-        return self._inverse_vocabulary
+        return self._words
 
-    def _initialise_defaults(self) -> None:
-        """Initialise the default vocabulary and inverse vocabulary."""
-        self._vocabulary = {self.pad_token: 0, self.unknown_token: 1}
-        self._inverse_vocabulary = [self.pad_token, self.unknown_token]
+    @property
+    def frequencies(self) -> List[int]:
+        """Return a list of integers, where the i-th element of the list
+        corresponds to frequency of the word with encoded index i.
+        """
+        return self._frequencies
 
-    def reset(self) -> None:
-        """Reset this tokenizer."""
-        self._initialise_defaults()
-        self._counter = Counter()
-
-    def update(self, data: Union[str, List[str]],
-               reset_state: Optional[bool] = False) -> None:
-        """Update this tokenizer with new text data.
+    def _read_lines(self, filenames: List[Union[Path, str]]) -> Iterator:
+        """Return an iterator of the lines in all the given files.
 
         Args:
-            data: A string, list of strings, or string tensor
-                containing text data to update the tokenizer with.
-            reset_state: Whether to reset the state of the tokenizer.
+            filenames: A list of strings or pathlib.Path objects containing
+                the names of text files.
         """
-        # Reset the sate if needed
-        if reset_state:
-            self.reset()
-
-        if isinstance(data, str):
-            # Convert the data into a list so that it is consistent.
-            data = [data]
-
-        tokens = []
-        for string in data:
-            tokens.extend(self._tokenize_string(string))
-
-        for token in tokens:
-            # Update the counter
-            self._counter[token] += 1
-
-        self._initialise_defaults()
-
-        n = self.max_tokens
-        if n is not None:
-            n -= len(self._vocabulary)
-
-        most_common_tokens = self._counter.most_common(n)
-        for token, _ in most_common_tokens:
-            self._vocabulary[token] = len(self._vocabulary)
-            self._inverse_vocabulary.append(token)
+        lines = []
+        for file in filenames:
+            with tf.io.gfile.GFile(file) as fp:
+                lines.append(fp)
+        lines = itertools.chain(*lines)
+        return lines
 
     def _tokenize_string(self, string: str) -> List[str]:
         """Return a list of tokens.
 
-        This removes punctuation, converts the string
-        to lowercase, and splits by spaces.
+        This removes punctuation, converts the string to lowercase,
+        strips leading and trailing whitespace, and splits by spaces.
         """
         string = string.translate(self._remove_punctuation_trans)
-        return string.lower().split()
+        return string.lower().strip().split()
 
-    def _add_tokens(self, *tokens: List[str]) -> None:
-        """Add the given tokens to the tokenizer, in the order of the list.
-
-        If the token already exists in the vocabulary, then it is skipped,
-        and its index is NOT changed.
+    def _get_sample_probability(self, frequency):
         """
-        for token in tokens:
-            # Update the counter
-            self._counter[token] += 1
+        Return the sample probability for a word with the given frequency.
 
-            if token in self._vocabulary:
-                continue
+        The sampling probabilities are generated according to the formula given by
+        Mikolov et. al. in their word2vec paper, and closely follows the author's
+        original implementation from the source code accomponying the paper.
 
+        See: https://github.com/tmikolov/word2vec/blob/master/word2vec.c#L407
+
+        Args:
+            frequency: The frequency of the word.
+        """
+        # The proportion of this word in the corpus
+        f = frequency / self._corpus_size
+        p = (np.sqrt(f / self.sample_threshold) + 1) * (self.sample_threshold / f)
+        return np.minimum(p, 1.0)
+
+    def build(self, data: Optional[Union[str, List[str]]] = None,
+              filenames: Optional[Union[str, Path, List[Union[Path, str]]]] = None,
+              reset_state: Optional[bool] = False) -> None:
+        """Build the vocabulary of this tokenizer from a corpus.
+
+        Args:
+            data: A string or list of strings containing text data.
+            filenames: A string or pathlib.Path object, or a list of them
+                containing the names of text files.
+            reset_state: Whether to reset the state of the tokenizer.
+        """
+        # Convert the data into a list so that it is consistent.
+        if data is None:
+            data = []
+        elif isinstance(data, str):
+            data = [data]
+
+        # Convert the filenames into a list so that it is consistent.
+        if filenames is None:
+            filenames = []
+        elif isinstance(filenames, (str, Path)):
+            filenames = [filenames]
+
+        # Combine the given data and the lines of the given files
+        # into a single iterator.
+        data = itertools.chain(data, self._read_lines(filenames))
+
+        # Reset the state, if needed.
+        if reset_state:
+            self.reset()
+
+        # Re-initialise the vocabulary to the default values.
+        # This will reset everything BUT the counter, which we want
+        # to keep since we want word frequency to be persistent.
+        self._initialise_defaults()
+        for x in data:
+            self._counter.update(self._tokenize_string(x))
+
+        tokens = self._counter.most_common(n=self.max_tokens)
+        # Filter out tokens that don't appear at least min_word_frequency
+        # times in the corpus.
+        tokens = [
+            (word, frequency) for word, frequency in tokens
+            if frequency >= self.min_word_frequency
+        ]
+
+        self._corpus_size = sum(frequency for _, frequency in tokens)
+        for token, frequency in tokens:
             self._vocabulary[token] = len(self._vocabulary)
-            self._inverse_vocabulary.append(token)
+            self._words.append(token)
+            self._frequencies.append(frequency)
 
-    def get_frequency(self, *tokens: List[str]) -> Union[int, Tuple[int]]:
-        """Return the frequency of each given token.
+            sample_probability = self._get_sample_probability(frequency)
+            self._sampling_table.append(sample_probability)
+
+    def encode(self, inputs: List[str]) -> List[List[str]]:
+        """Encode inputs.
+
+        Args:
+            inputs: A string or list of strings to encode.
         """
-        frequencies = []
-        for token in tokens:
-            frequencies.append(self._counter[token])
-
-        if len(frequencies) == 1:
-            return frequencies[0]
-        return tuple(frequencies)
+        outputs = []
+        for x in inputs:
+            tokens = self._tokenize_string(x)
+            outputs.append([self.get_index(token) for token in tokens])
+        return outputs
 
     def get_index(self, token: str) -> int:
         """Return the index of the given token.
+
         If the given token is out-of-the-vocabulary, the index of the
         unknown token is returned.
         """
@@ -173,73 +251,36 @@ class Tokenizer:
 
     def get_token(self, index: int) -> str:
         """Return the token corresponding to the given token.
+
         If the given index is out-of-the-vocabulary, the unknown token is returned.
         """
-        if index >= len(self._inverse_vocabulary):
+        if index >= len(self._words):
             return self.get_index(self.unknown_token)
-        return self._inverse_vocabulary[index]
+        return self._words[index]
 
-    def encode(self, inputs: Union[str, tf.Tensor, List[str], Tuple[str], np.ndarray],
-               output_length: Optional[int] = None) -> tf.Tensor:
-        """Encode inputs.
+    def get_frequency(self, *tokens: List[str]) -> Union[int, Tuple[int]]:
+        """Return the frequency of each given token."""
+        frequencies = []
+        for token in tokens:
+            frequencies.append(self._counter[token])
 
-        Args:
-            inputs: The strings to encode.
-            output_length: The length (dimensionality) of the encoded vectors.
-                Pads or truncates vectors to the same length.
-                If unspecified, vectors are padded to the max length.
-        """
-        if isinstance(inputs, str):
-            inputs = [inputs]
-
-        if isinstance(inputs, (list, tuple, np.ndarray)):
-            inputs = tf.convert_to_tensor(inputs)
-
-        outputs = []
-        flattened = tf.unstack(tf.reshape(inputs, [-1]))
-        for x in flattened:
-            value = x.numpy().decode()
-            outputs.append(self._encode_string(value))
-
-        # Compute length
-        if output_length is None:
-            output_length = max(len(x) for x in outputs)
-
-        # Pad or truncate encoded vectors
-        pad_token_index = self.get_index(self.pad_token)
-        for i, x in enumerate(outputs):
-            n = len(x)
-            if output_length < n:
-                # Truncate the output to output_length
-                outputs[i] = x[:output_length]
-            else:
-                # Pad the output
-                pad_length = output_length - n
-                outputs[i] = x + [pad_token_index] * pad_length
-
-        outputs = tf.convert_to_tensor(outputs, dtype=tf.int64)
-        if outputs.shape[0] == 1:
-            outputs = tf.squeeze(outputs, 0)
-        return tf.stack(outputs)
-
-    def _encode_string(self, input: str) -> List[str]:
-        """Encode a string.
-
-        Args:
-            input: The string to encode.
-        """
-        tokens = self._tokenize_string(input)
-        return [self.get_index(token) for token in tokens]
+        if len(frequencies) == 1:
+            return frequencies[0]
+        return tuple(frequencies)
 
     def _get_state(self) -> dict:
         """Get the state of this tokenizer."""
         return {
-            '_vocabulary': self._vocabulary,
-            '_inverse_vocabulary': self._inverse_vocabulary,
-            '_counter': self._counter,
             'pad_token': self.pad_token,
             'unknown_token': self.unknown_token,
-            'max_token': self.max_tokens
+            'max_tokens': self.max_tokens,
+            'sample_threshold': self.sample_threshold,
+            'min_word_frequency': self.min_word_frequency,
+            '_vocabulary': self._vocabulary,
+            '_words': self._words,
+            '_counter': self._counter,
+            '_sampling_table': self._sampling_table,
+            '_corpus_size': self._corpus_size
         }
 
     def _load_state(self, state: dict) -> None:
