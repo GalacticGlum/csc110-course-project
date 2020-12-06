@@ -40,7 +40,7 @@ def read_lines(filenames: List[Union[Path, str]]) -> Iterator:
 class Tokenizer:
     """Text tokenizer.
 
-    Public Attributes:
+    Instance Attributes:
         - unknown_index: Token to represent words not in the dataset.
         - max_tokens: The maximum number of tokens in the vocabulary.
             If None, there is no max on the tokens.
@@ -515,7 +515,7 @@ def make_dataset(filenames: List[Union[Path, str]], tokenizer: Tokenizer,
 class Word2Vec(tf.keras.Model):
     """Word2Vec model.
 
-    Public Attributes:
+    Instance Attributes:
         - hidden_size: The number of units in the hidden layer.
             This is also the dimensionality of the embedding vectors.
         - batch_size: The size of a single batch.
@@ -583,7 +583,7 @@ class Word2Vec(tf.keras.Model):
                             maxval=0.1
                         ))
 
-        # Bias term to add when taking the dot product of the projection and hidden layer.
+        # Bias term to add when taking the dot product of the hidden layers.
         self.add_weight('bias', shape=(vocab_size,),
                         # Initialize bias with zeroes.
                         initializer=tf.keras.initializers.Zeros())
@@ -673,6 +673,7 @@ class Word2Vec(tf.keras.Model):
         #       for all i).
         # Or concisely written as ijk,ikl->il.
         pred_logits = tf.einsum('ijk,ikl->il', tf.expand_dims(proj_inputs, 1), ns_proj_transpose)
+        # Add bias if needed
         if self._bias:
             label_logits += tf.gather(bias, labels)
             pred_logits += tf.gather(bias, negative_samples)
