@@ -1,7 +1,10 @@
 """Helper functions."""
 
+import random
 from typing import Optional, Union
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import numpy as np
 from tqdm import tqdm
 
 
@@ -100,12 +103,30 @@ def parallel_map(iterables: Union[list, iter], function: callable, n_jobs: Optio
     return output
 
 
+def set_seed(seed: int) -> None:
+    """Sets the seed in random, numpy, and tensorflow.
+
+    Args:
+        seed: The seed of the random engine.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+
+    # Set TensorFlow seed
+    import tensorflow as tf
+    tf.random.set_seed(seed)
+
+
 if __name__ == '__main__':
     import python_ta
     python_ta.check_all(config={
         'extra-imports': [
+            'random',
+            'typing',
+            'concurrent.futures',
             'tqdm',
-            'concurrent.futures'
+            'numpy'
+            'tensorflow',
         ],
         'allowed-io': [],
         'max-line-length': 100,

@@ -523,7 +523,7 @@ class Word2Vec(tf.keras.Model):
             positive context word. Mikolov, et. al. showed that for small
             datasets, values between 5 and 20 (inclusive) work best, whereas
             for large datasets, values between 2 and 5 (inclusive) suffice.
-        - lambda_power: Used to skew the probability distribution when sampling unigrams.
+        - lambda_power: Used to skew the probability distribution when sampling words.
     """
     # Private Instance Attributes:
     #   - _tokenizer: The tokenizer containing the vocabulary.
@@ -544,7 +544,7 @@ class Word2Vec(tf.keras.Model):
                 positive context word. Mikolov, et. al. showed that for small
                 datasets, values between 5 and 20 (inclusive) work best, whereas
                 for large datasets, values between 2 and 5 (inclusive) suffice.
-            lambda_power: Used to skew the probability distribution when sampling unigrams.
+            lambda_power: Used to skew the probability distribution when sampling words.
             bias: Whether to add a bias term.
         """
         # Call the superclass initialiser
@@ -696,21 +696,21 @@ class Word2Vec(tf.keras.Model):
 
 
 if __name__ == '__main__':
-    # import python_ta
-    # python_ta.check_all(config={
-    #     'extra-imports': [
-    #         'json',
-    #         'string',
-    #         'itertools',
-    #         'pathlib',
-    #         'collections',
-    #         'typing',
-    #         'numpy',
-    #         'tensorflow',
-    #     ],
-    #     'max-line-length': 100,
-    #     'disable': ['R1705', 'C0200', 'E9998']
-    # })
+    import python_ta
+    python_ta.check_all(config={
+        'extra-imports': [
+            'json',
+            'string',
+            'itertools',
+            'pathlib',
+            'collections',
+            'typing',
+            'numpy',
+            'tensorflow',
+        ],
+        'max-line-length': 100,
+        'disable': ['R1705', 'C0200', 'E9998']
+    })
 
     import doctest
     doctest.testmod()
