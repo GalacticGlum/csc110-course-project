@@ -586,7 +586,7 @@ class Word2Vec(tf.keras.Model):
         # Bias term to add when taking the dot product of the projection and hidden layer.
         self.add_weight('bias', shape=(vocab_size,),
                         # Initialize bias with zeroes.
-                        initializer=tf.keras.initializers.zeros())
+                        initializer=tf.keras.initializers.Zeros())
 
     def call(self, inputs: tf.Tensor, labels: tf.Tensor) -> tf.Tensor:
         """Run a forward pass on the model.
@@ -599,10 +599,23 @@ class Word2Vec(tf.keras.Model):
                 the features to the model.
             labels: An int tensor with shape (self.batch_size,) containing
                 the labels (correct output) for the given feature inputs.
-        """
-        # Get weights
-        proj, proj_out, bias = self.weights
 
+        >>> import math
+        >>> tf.random.set_seed(69)
+
+        >>> tokenizer = Tokenizer()
+        >>> tokenizer.build('David is really cool!')
+        >>> model = Word2Vec(tokenizer, hidden_size=tokenizer.vocab_size,\
+                             batch_size=1, n_negative_samples=1)
+
+        >>> inputs = tf.convert_to_tensor([2], dtype=tf.int64)
+        >>> labels = tf.convert_to_tensor([1], dtype=tf.int64)
+
+        >>> actual = tf.reduce_sum(tf.squeeze(model(inputs, labels))).numpy()
+        >>> expected = 1.3795923
+        >>> math.isclose(actual, expected)
+        True
+        """
         # Create n_negative_samples for each positve (target, context) word-pair,
         # by sampling random words from the vocabulary (excluding the context word).
         #
@@ -623,7 +636,7 @@ class Word2Vec(tf.keras.Model):
         negative_samples = tf.random.fixed_unigram_candidate_sampler(
             true_classes=tf.expand_dims(labels, 1),
             num_true=1,
-            nums_sampled=self.batch_size * self.n_negative_samples,
+            num_sampled=self.batch_size * self.n_negative_samples,
             unique=True,  # Sample without replacement
             range_max=self._tokenizer.vocab_size,
             distortion=self.lambda_power,
@@ -634,14 +647,17 @@ class Word2Vec(tf.keras.Model):
         # Reshape negative samples into a matrix
         negative_samples = tf.reshape(negative_samples, (self.batch_size, self.n_negative_samples))
 
+        # Get weights
+        proj, proj_out, bias = self.weights
         # Project inputs into embedding space
         proj_inputs = tf.gather(proj, inputs)
-        negative_samples_proj = tf.gather(proj_out, negative_samples)
         # Project lables into output space
         proj_labels = tf.gather(proj_out, labels)
 
         # Compute logits
         label_logits = tf.reduce_sum(tf.multiply(proj_inputs, proj_labels), 1)
+
+        negative_samples_proj = tf.gather(proj_out, negative_samples)
         # Transpose the negative sample matrix so that the weights and inputs are flipped.
         ns_proj_transpose = tf.transpose(negative_samples_proj, (0, 2, 1))
         # Einstein summation (einsum) is a compact way of expressing element-wise computation.
@@ -651,7 +667,7 @@ class Word2Vec(tf.keras.Model):
         #           sum(
         #               sum(
         #                   sum(
-        #                       sum(A_ijk * B_ikl l = C_il for all l)
+        #                       sum(A_ijk * B_ikl = C_il for all l)
         #               for all k)
         #           for all j)
         #       for all i).
@@ -666,7 +682,7 @@ class Word2Vec(tf.keras.Model):
             labels=tf.ones_like(label_logits), logits=label_logits
         )
         pred_cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(
-            labels=tf.ones_like(pred_logits), logits=pred_logits
+            labels=tf.zeros_like(pred_logits), logits=pred_logits
         )
         # Compute loss
         return tf.concat([
@@ -675,7 +691,7 @@ class Word2Vec(tf.keras.Model):
             # We need to add another dimension to the former so the shapes match up.
             tf.expand_dims(label_cross_entropy, 1),
             pred_cross_entropy
-        ])
+        ], axis=1)
 
 
 if __name__ == '__main__':
