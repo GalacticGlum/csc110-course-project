@@ -74,7 +74,7 @@ class Tokenizer:
                  max_tokens: Optional[int] = None,
                  min_word_frequency: Optional[int] = 0,
                  sample_threshold: Optional[float] = 1e-3) -> None:
-        """Initialize this tokenizer.
+        """Initialise this tokenizer.
 
         Args:
             unknown_index: Index to represent words not in the dataset.
@@ -513,8 +513,169 @@ def make_dataset(filenames: List[Union[Path, str]], tokenizer: Tokenizer,
 
 
 class Word2Vec(tf.keras.Model):
-    """Word2Vec model."""
-    # TODO: Umm....implement the model?
+    """Word2Vec model.
+
+    Public Attributes:
+        - hidden_size: The number of units in the hidden layer.
+            This is also the dimensionality of the embedding vectors.
+        - batch_size: The size of a single batch.
+        - n_negative_samples: The number of negative samples to generate per
+            positive context word. Mikolov, et. al. showed that for small
+            datasets, values between 5 and 20 (inclusive) work best, whereas
+            for large datasets, values between 2 and 5 (inclusive) suffice.
+        - lambda_power: Used to skew the probability distribution when sampling unigrams.
+    """
+    # Private Instance Attributes:
+    #   - _tokenizer: The tokenizer containing the vocabulary.
+    #   - _bias: Whether to add a bias term.
+    _tokenizer: Tokenizer
+
+    def __init__(self, tokenizer: Tokenizer, hidden_size: Optional[int] = 256,
+                 batch_size: Optional[int] = 256, n_negative_samples: Optional[int] = 5,
+                 lambda_power: Optional[float] = 0.75, bias: Optional[bool] = True) -> None:
+        """Initialise this Word2Vec model.
+
+        Args:
+            tokenizer: The tokenizer containing the vocabulary.
+            hidden_size: The number of units in the hidden layer.
+                This is also the dimensionality of the embedding vectors.
+            batch_size: The size of a single batch.
+            n_negative_samples: The number of negative samples to generate per
+                positive context word. Mikolov, et. al. showed that for small
+                datasets, values between 5 and 20 (inclusive) work best, whereas
+                for large datasets, values between 2 and 5 (inclusive) suffice.
+            lambda_power: Used to skew the probability distribution when sampling unigrams.
+            bias: Whether to add a bias term.
+        """
+        # Call the superclass initialiser
+        super().__init__()
+
+        self._tokenizer = tokenizer
+        self._bias = bias
+
+        self.hidden_size = hidden_size
+        self.batch_size = batch_size
+        self.n_negative_samples = n_negative_samples
+        self.lambda_power = lambda_power
+
+        self._create_weights()
+
+    def _create_weights(self):
+        """Create weights for the model."""
+        vocab_size = self._tokenizer.vocab_size
+        # Weights for the first hidden layer ('projects' inputs into the embedding vector space).
+        # These are used to retrieve embedding vectors.
+        self.add_weight('proj', shape=(vocab_size, self.hidden_size),
+                        # Initialise weights by sampling from a uniform distribution
+                        # in the range (-1 / (2 * self.hidden_size), 1 / (2 * self.hidden_size)).
+                        initializer=tf.keras.initializers.RandomUniform(
+                            minval=-0.5 / self.hidden_size,
+                            maxval=0.5 / self.hidden_size
+                        ))
+
+        # Weights for the second hidden layer (internal weights for projecting the embedding
+        # space back into the vocabulary output space). These are only used for training.
+        self.add_weight('proj_out', shape=(vocab_size, self.hidden_size),
+                        # Initialise weights by sampling from a uniform distribution
+                        # in the range (-0.1, 0.1).
+                        initializer=tf.keras.initializers.RandomUniform(
+                            minval=-0.1,
+                            maxval=0.1
+                        ))
+
+        # Bias term to add when taking the dot product of the projection and hidden layer.
+        self.add_weight('bias', shape=(vocab_size,),
+                        # Initialize bias with zeroes.
+                        initializer=tf.keras.initializers.zeros())
+
+    def call(self, inputs: tf.Tensor, labels: tf.Tensor) -> tf.Tensor:
+        """Run a forward pass on the model.
+
+        Return a float tensor with shape (self.batch_size, self.n_negative_samples + 1)
+        represesnting the cross entropy loss for the given features and chosen negative samples.
+
+        Args:
+            inputs: An int tensor with shape (self.batch_size,) containing
+                the features to the model.
+            labels: An int tensor with shape (self.batch_size,) containing
+                the labels (correct output) for the given feature inputs.
+        """
+        # Get weights
+        proj, proj_out, bias = self.weights
+
+        # Create n_negative_samples for each positve (target, context) word-pair,
+        # by sampling random words from the vocabulary (excluding the context word).
+        #
+        # A negative sample refers to a (target, not_context) word-pair where not_context
+        # is NOT the context word of the positive sample (i.e. not_context != context).
+        #
+        # The intuition towards negative sampling, as proposed by Mikolov et. al.
+        # is to sample words from the vocabulary from a distribution designed to favour
+        # more frequent words. The probability of sampling a word i is given by:
+        #   P(w_i) = [f(w_i)^lambda] / sum(f(w_j)^lambda for j = 0 to n),
+        # where n is the vocabulary size, f : N -> N, gives the frequency of each word
+        # in the vocabulary, and lambda is a hyperparameter (set to 3/4 in the paper).
+        #
+        # Sample a random word (index) from the range [0, vocab_size) excluding the
+        # elements of the true_classes tensor (in our case, the context word).
+        #
+        # Returns an int tensor with shape (n_negative_samples,) containing the sampled values.
+        negative_samples = tf.random.fixed_unigram_candidate_sampler(
+            true_classes=tf.expand_dims(labels, 1),
+            num_true=1,
+            nums_sampled=self.batch_size * self.n_negative_samples,
+            unique=True,  # Sample without replacement
+            range_max=self._tokenizer.vocab_size,
+            distortion=self.lambda_power,
+            unigrams=self._tokenizer.frequencies
+        )
+        # Get candidates
+        negative_samples = negative_samples.sampled_candidates
+        # Reshape negative samples into a matrix
+        negative_samples = tf.reshape(negative_samples, (self.batch_size, self.n_negative_samples))
+
+        # Project inputs into embedding space
+        proj_inputs = tf.gather(proj, inputs)
+        negative_samples_proj = tf.gather(proj_out, negative_samples)
+        # Project lables into output space
+        proj_labels = tf.gather(proj_out, labels)
+
+        # Compute logits
+        label_logits = tf.reduce_sum(tf.multiply(proj_inputs, proj_labels), 1)
+        # Transpose the negative sample matrix so that the weights and inputs are flipped.
+        ns_proj_transpose = tf.transpose(negative_samples_proj, (0, 2, 1))
+        # Einstein summation (einsum) is a compact way of expressing element-wise computation.
+        # In this case, we take the sum of A_ijk * B_ikl for all i,j,k,l to compute a new tensor C_il.
+        # This can be thought of as nested summations:
+        #   C = sum(
+        #           sum(
+        #               sum(
+        #                   sum(
+        #                       sum(A_ijk * B_ikl l = C_il for all l)
+        #               for all k)
+        #           for all j)
+        #       for all i).
+        # Or concisely written as ijk,ikl->il.
+        pred_logits = tf.einsum('ijk,ikl->il', tf.expand_dims(proj_inputs, 1), ns_proj_transpose)
+        if self._bias:
+            label_logits += tf.gather(bias, labels)
+            pred_logits += tf.gather(bias, negative_samples)
+
+        # Compute cross entropy
+        label_cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(
+            labels=tf.ones_like(label_logits), logits=label_logits
+        )
+        pred_cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(
+            labels=tf.ones_like(pred_logits), logits=pred_logits
+        )
+        # Compute loss
+        return tf.concat([
+            # label_cross_entropy is a tensor with shape (batch_size,) whereas
+            # pred_cross_entropy is a tensor with shape (batch_size, n_negative_samples).
+            # We need to add another dimension to the former so the shapes match up.
+            tf.expand_dims(label_cross_entropy, 1),
+            pred_cross_entropy
+        ])
 
 
 if __name__ == '__main__':
