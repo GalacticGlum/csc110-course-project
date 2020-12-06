@@ -1,9 +1,7 @@
 """Implementation of the Word2Vec model architecture with subsampling and negative sampling."""
 
-import time
 import json
 import string
-import random
 import itertools
 from pathlib import Path
 from collections import Counter
@@ -18,27 +16,33 @@ from typing import (
 
 import numpy as np
 import tensorflow as tf
-from tqdm import tqdm
-from logger import logger
-from tensorflow.keras.layers.experimental.preprocessing import TextVectorization
+
+
+def read_lines(filenames: List[Union[Path, str]]) -> Iterator:
+    """Return an iterator of the lines in all the given files.
+
+    Args:
+        filenames: A list of strings or pathlib.Path objects containing
+            the names of text files.
+    """
+    lines = []
+    for file in filenames:
+        with tf.io.gfile.GFile(file) as fp:
+            lines.append(fp)
+    lines = itertools.chain(*lines)
+    return lines
 
 
 class Tokenizer:
     """Text tokenizer.
 
-    By convention, the first element of the vocabulary is an empty string
-    and is used a padding token. Word indices are one-based. And, the vocabulary
-    is sorted by word frequency, where the most-common word has index 2, the
-    second-most common word has index 3, and so on.
-
-    Instance Attributes:
-        - pad_token: Token to represent non-words. A padding token.
-        - unknown_token: Token to represent words not in the dataset.
+    Public Attributes:
+        - unknown_index: Token to represent words not in the dataset.
         - max_tokens: The maximum number of tokens in the vocabulary.
             If None, there is no max on the tokens.
         - sample_threshold: A small value to offset the probabilities for
             sampling any given word. This is the "t" variable in the distribution
-            given by Mikolov et. al. in their word2vec paper.
+            given by Mikolov et. al. in their Word2Vec paper.
         - min_word_frequency: The minimum frequency for words to be included in
             the vocabulary.
     """
@@ -62,17 +66,14 @@ class Tokenizer:
     _corpus_size: int
     _remove_punctuation_trans: object
 
-    def __init__(self, pad_token='', unknown_token='UNK',
+    def __init__(self, unknown_index: Optional[int] = -1,
                  max_tokens: Optional[int] = None,
                  min_word_frequency: Optional[int] = 0,
                  sample_threshold: Optional[float] = 1e-3) -> None:
         """Initialize this tokenizer.
 
         Args:
-            pad_token: Token to represent non-words. A padding token.
-                This token has index 0 in the vocabulary.
-            unknown_token: Token to represent words not in the dataset.
-                This token has index 1 in the vocabulary.
+            unknown_index: Index to represent words not in the dataset.
             max_tokens: The maximum number of tokens in the vocabulary.
                 If None, there is no max on the tokens. This is including
                 the number of default tokens in the tokenizer.
@@ -80,10 +81,9 @@ class Tokenizer:
                 in the vocabulary.
             sample_threshold: A small value to offset the probabilities for
                 sampling any given word. This is the "t" variable in the
-                distribution given by Mikolov et. al. in their word2vec paper.
+                distribution given by Mikolov et. al. in their Word2Vec paper.
         """
-        self.pad_token = pad_token
-        self.unknown_token = unknown_token
+        self.unknown_index = unknown_index
         self.max_tokens = max_tokens
         self.min_word_frequency = max(0, min_word_frequency)
         self.sample_threshold = sample_threshold
@@ -98,10 +98,9 @@ class Tokenizer:
         Args:
             reset_counter: Whether to reset the counter.
         """
-        self._vocabulary = {self.pad_token: 0, self.unknown_token: 1}
-        self._words = [self.pad_token, self.unknown_token]
-        # The first two tokens, pad an unknown, don't appear in the corpus.
-        self._frequencies = [0, 0]
+        self._vocabulary = {}
+        self._words = []
+        self._frequencies = []
         self._sampling_table = []
         self._corpus_size = 0
 
@@ -131,35 +130,38 @@ class Tokenizer:
         """
         return self._frequencies
 
-    def _read_lines(self, filenames: List[Union[Path, str]]) -> Iterator:
-        """Return an iterator of the lines in all the given files.
-
-        Args:
-            filenames: A list of strings or pathlib.Path objects containing
-                the names of text files.
+    @property
+    def sampling_table(self) -> List[float]:
+        """Return a list of floats giving the probability of sampling words.
+        The i-th element of the table gives the probability of sampling the word.
         """
-        lines = []
-        for file in filenames:
-            with tf.io.gfile.GFile(file) as fp:
-                lines.append(fp)
-        lines = itertools.chain(*lines)
-        return lines
+        return self._sampling_table
 
-    def _tokenize_string(self, string: str) -> List[str]:
+    @property
+    def corpus_size(self) -> int:
+        """Return the number of words in the corpus."""
+        return self._corpus_size
+
+    @property
+    def vocab_size(self) -> int:
+        """Return the size of the vocabulary."""
+        return len(self.vocabulary)
+
+    def _tokenize_string(self, x: str) -> List[str]:
         """Return a list of tokens.
 
         This removes punctuation, converts the string to lowercase,
         strips leading and trailing whitespace, and splits by spaces.
         """
-        string = string.translate(self._remove_punctuation_trans)
-        return string.lower().strip().split()
+        x = x.translate(self._remove_punctuation_trans)
+        return x.lower().strip().split()
 
-    def _get_sample_probability(self, frequency):
+    def _get_sample_probability(self, frequency: int) -> float:
         """
         Return the sample probability for a word with the given frequency.
 
         The sampling probabilities are generated according to the formula given by
-        Mikolov et. al. in their word2vec paper, and closely follows the author's
+        Mikolov et. al. in their Word2Vec paper, and closely follows the author's
         original implementation from the source code accomponying the paper.
 
         See: https://github.com/tmikolov/word2vec/blob/master/word2vec.c#L407
@@ -197,7 +199,7 @@ class Tokenizer:
 
         # Combine the given data and the lines of the given files
         # into a single iterator.
-        data = itertools.chain(data, self._read_lines(filenames))
+        data = itertools.chain(data, read_lines(filenames))
 
         # Reset the state, if needed.
         if reset_state:
@@ -227,17 +229,22 @@ class Tokenizer:
             sample_probability = self._get_sample_probability(frequency)
             self._sampling_table.append(sample_probability)
 
+    def encode_string(self, x: str) -> List[str]:
+        """Encode a single string into an integer vector.
+
+        Args:
+            x: The string to encode.
+        """
+        tokens = self._tokenize_string(x)
+        return [self.get_index(token) for token in tokens]
+
     def encode(self, inputs: List[str]) -> List[List[str]]:
         """Encode inputs.
 
         Args:
-            inputs: A string or list of strings to encode.
+            inputs: A list of strings to encode.
         """
-        outputs = []
-        for x in inputs:
-            tokens = self._tokenize_string(x)
-            outputs.append([self.get_index(token) for token in tokens])
-        return outputs
+        return [self.encode_string(x) for x in inputs]
 
     def get_index(self, token: str) -> int:
         """Return the index of the given token.
@@ -246,16 +253,16 @@ class Tokenizer:
         unknown token is returned.
         """
         if token not in self._vocabulary:
-            return self._vocabulary[self.unknown_token]
+            return self.unknown_index
         return self._vocabulary[token]
 
     def get_token(self, index: int) -> str:
         """Return the token corresponding to the given token.
 
-        If the given index is out-of-the-vocabulary, the unknown token is returned.
+        If the given index is out-of-the-vocabulary, None is returned.
         """
         if index >= len(self._words):
-            return self.get_index(self.unknown_token)
+            return None
         return self._words[index]
 
     def get_frequency(self, *tokens: List[str]) -> Union[int, Tuple[int]]:
@@ -271,8 +278,7 @@ class Tokenizer:
     def _get_state(self) -> dict:
         """Get the state of this tokenizer."""
         return {
-            'pad_token': self.pad_token,
-            'unknown_token': self.unknown_token,
+            'unknown_index': self.unknown_index,
             'max_tokens': self.max_tokens,
             'sample_threshold': self.sample_threshold,
             'min_word_frequency': self.min_word_frequency,
@@ -306,307 +312,218 @@ class Tokenizer:
             self._load_state(json.load(file))
 
 
-def make_skipgram_pairs(sequence: List[int], window_size: int,
-                        sampling_table: Optional[np.ndarray] = None,
-                        skip_zero: Optional[bool] = True,
-                        skip_func: Optional[callable] = None) \
-        -> List[Tuple[int, int]]:
-    """
-    Make positive example pairs for a skip-gram language model.
+def apply_subsampling(sequence: tf.Tensor, sampling_table: tf.Tensor,
+                      unknown_index: Optional[int] = -1) -> tf.Tensor:
+    """Apply subsampling on the encoded sequence using the probabilities
+    in the sampling table computed by the tokenizer.
 
-    Return a list of 2-element tuples consisting of the target and
-    context word (in the neighbourhood of the given window size).
+    Return a rank-1 int tensor of word indices.
 
     Args:
-        sequence: A sequence of words encoded as a list of integers.
+        sequence: A rank-1 int tensor of encoded words.
+        sampling_table: A rank-1 float tensor containing the probabilities
+            of sampling words by frequency. The i-th element of the table
+            gives the probability of sampling the word whose encoded index is i.
+        unknown_index: The index of words that are not in the vocabulary.
+            These are filtered out prior to subsampling.
+    """
+    # Filter out unknown words
+    sequence = tf.boolean_mask(sequence, tf.not_equal(sequence, unknown_index))
+    probabilities = tf.gather(sampling_table, sequence)
+    # Random sample values from 0 to 1
+    samples = tf.random.uniform(tf.shape(probabilities), 0, 1)
+    sequence = tf.boolean_mask(sequence, tf.less(samples, probabilities))
+    return sequence
+
+
+def make_skipgram_pairs(sequence: tf.Tensor, window_size: int,
+                        randomly_offset: Optional[bool] = True) -> tf.Tensor:
+    """
+    Make example pairs for a skip-gram language model.
+
+    Return a rank-2 int tensor where each row consists of a single (target, context)
+    word pair. Context words are sampled from the neighbourhood around the target word
+    with a radius of the given window size.
+
+    Args:
+        sequence: A rank-1 int tensor representing a sequence of encoded word indices.
         window_size: The size of the sliding window (on each side of the
             target word) used to construct sample pairs.
 
             For every index i in the sequence, contexts words are chosen in
             the neigbourhood defined by [i - window_size, i + window_size].
-        sampling_table: The probability of sampling words by frequency.
-            The i-th element of the table gives the probability of sampling
-            the word with (encoded) index, i, in the vocabulary.
-
-            For example, if "the" is encoded as 7, then sampling_table[7]
-            should give the sampling probability for that word ("the").
-        skip_zero: Whether to skip words with index 0 in the sequence. By convention,
-            we assume that the vocabulary is one-indexed, and that 0 is not a valid
-            word index. If False, 0 is treated as a valid word index.
-        skip_func: A filtering function which takes in a word as input and returns a
-            boolean indicating whether it should be skipped.
+        randomly_offset: Whether to randomly offset the window size.
 
     Preconditions:
-        - window_size >= 0
+        - window_size > 0
 
-    >>> sequence = [4, 3, 5, 5, 2, 0, 0]
-    >>> expected = [(4, 3), (4, 5),\
-                    (3, 4), (3, 5), (3, 5),\
-                    (5, 4), (5, 3), (5, 5), (5, 2),\
-                    (5, 3), (5, 5), (5, 2),\
-                    (2, 5), (2, 5)]
-    >>> expected == make_skipgram_pairs(sequence, 2)
+    >>> sequence = tf.convert_to_tensor([4, 3, 5, 5, 2], dtype=tf.int64)
+    >>> expected = [[4, 3], [4, 5],\
+                    [3, 4], [3, 5], [3, 5],\
+                    [5, 4], [5, 3], [5, 5], [5, 2],\
+                    [5, 3], [5, 5], [5, 2],\
+                    [2, 5], [2, 5]]
+    >>> actual = make_skipgram_pairs(sequence, 2, randomly_offset=False)
+    >>> tf.reduce_all(tf.equal(actual, expected)).numpy()
     True
-    >>> make_skipgram_pairs([1, 2], 0)
-    []
     """
-    def _skip_word(x):
-        """Return whether to skip the word."""
-        return skip_zero and not x or \
-               skip_func is not None and skip_func(x)
+    n = tf.size(sequence)
 
-    n = len(sequence)
-    pairs = []
-    for i, target_word in enumerate(sequence):
-        if _skip_word(target_word):
-            continue
+    def _make_pairs(index: int, x: tf.TensorArray) -> Tuple[int, tf.TensorArray]:
+        """Make (target, context) pairs for a given target word.
 
-        if sampling_table is not None:
-            p = sampling_table[target_word]
-            # Sample iff random.random() < p.
-            if random.random() >= p:
-                continue
+        Returns the next iteration index (variable), and a TensorArray
+        containing the output values.
 
-        start_index = max(0, i - window_size)
-        end_index = min(n, i + window_size + 1)
-        # Iterate through the neighbourhood the target word.
-        for j in range(start_index, end_index):
-            # We don't want the words to ever be the same!
-            if i == j:
-                continue
+        Args:
+            index: The index of the target word in the sequence tensor.
+            x: Collection holding the output values.
+        """
+        if randomly_offset:
+            shift = tf.random.uniform((), maxval=window_size, dtype=tf.int32)
+        else:
+            shift = 0
 
-            # Create new (target, context) pair.
-            context_word = sequence[j]
-            if _skip_word(context_word):
-                continue
+        # Calculate indices of context words to the left and right of the target.
+        left = tf.range(tf.maximum(0, index - window_size + shift), index)
+        right = tf.range(index + 1, tf.minimum(n, index + 1 + window_size - shift))
+        # Concatenate left and right tensors
+        contexts = tf.concat([left, right], axis=0)
+        contexts = tf.gather(sequence, contexts)
+        # Create (target, context) pairs
+        targets = tf.fill(tf.shape(contexts), sequence[index])
+        pairs = tf.stack([targets, contexts], axis=1)
+        # Output values
+        return index + 1, x.write(index, pairs)
 
-            pairs.append((target_word, context_word))
+    # Placeholder array that will store the output values of _make_pairs
+    x = tf.TensorArray(tf.int64, size=n, infer_shape=False)
+    # Outputs a list of tensors for each loop variable.
+    _, x = tf.while_loop(lambda i, _: i < n,  # Stop condition
+                         _make_pairs,  # Body
+                         [0, x],  # Loop variables
+                         back_prop=False)
+    # Concat outputs for each loop variable into a single tensor
+    outputs = tf.cast(x.concat(), tf.int64)
+    # Ensure shape of the output
+    outputs.set_shape((None, 2))
+    return outputs
 
-    return pairs
 
+def make_dataset(filenames: List[Union[Path, str]], tokenizer: Tokenizer,
+                 window_size: Optional[int] = 5, batch_size: Optional[int] = 32,
+                 epochs: Optional[int] = 1) -> tf.data.Dataset:
+    """
+    Make a dataset for training the Word2Vec model using the given tokenizer.
 
-def make_training_data(sequences: List[List[int]], window_size: int,
-                       n_negative_samples: int, vocab_size: int,
-                       use_subsampling: Optional[bool] = True,
-                       show_progress_bar: Optional[bool] = True,
-                       progress_bar_total: Optional[int] = None) \
-        -> Tuple[List[int], List[int], List[int]]:
-    """Make training data for a skip-gram language model.
+    Return a tf.data.Dataset consisting of feature-label tensor tuples of the
+    form (features, labels, iter_progress), where iter_progress is the iteration
+    progress (i.e. percent complete) at each sample.
 
-    Return a 3-element tuple consisting of the target words, context words,
-    and labels.
+    The shape of the dataset is (
+        (batch_size,),
+        (batch_size,),
+        (batch_size,)
+    ).
 
     Args:
-        sequences: A list of vectorised word token sequences.
+        filenames: A list of strings or pathlib.Path objects containing
+            the names of text files.
+        tokenizer: The tokenizer to use to encode the text data.
         window_size: The size of the sliding window used to construct sample pairs.
-        n_negative_samples: The number of negative samples to generate per
-            positive context word. Mikolov, et. al. showed that for small
-            datasets, values between 5 and 20 (inclusive) work best, whereas
-            for large datasets, values between 2 and 5 (inclusive) suffice.
-        vocab_size: The nubmer of words (tokens) in the model vocabulary.
-        use_subsampling: Whether to subsample words based on frequency probabilities.
-            If False, words are uniformly sampled from the vocabulary.
-        show_progress_bar: Whether to show a progress bar while the jobs run.
-        progress_bar_total: Total number of iterations for the progress bar.
-            This is purely aesthetic.
+        batch_size: The size of a single batch.
+        epochs: The number of times the dataset is iterated over during training.
 
     Preconditions:
-        - subsampling_table is None or len(subsampling_table) == vocab_size
+        - window_size > 0
+        - batch_size > 0
     """
-    targets, contexts, labels = [], [], []
-    # TODO:The make_sampling_table functions gives an array where the i-th
-    # element gives the probabiltiy of sampling the i-th most common word under
-    # the assumption that the word frequency follows a Zipf-like distribution.
+    # Get the total number of lines that we have to iterate over
+    total_lines = sum(len(list(tf.io.gfile.GFile(file))) for file in filenames) * epochs
+
+    def _load_lines_generator() -> List[int]:
+        """Generator function for getting lines of the dataset."""
+        lines = read_lines(filenames)
+        for line in lines:
+            yield tokenizer.encode_string(line)
+
+    dataset = tf.data.Dataset.zip((
+        tf.data.Dataset.from_generator(_load_lines_generator, tf.int64, output_shapes=[None]),
+        # A tensor containing the iteration progress at each sample.
+        tf.data.Dataset.from_tensor_slices(tf.range(total_lines) / total_lines)
+    ))
+
+    # Convert the sampling table to a tensor so it can be used by TensorFlow.
+    sampling_table = tf.cast(tf.constant(tokenizer.sampling_table), tf.float32)
+    # Apply subsampling on each sequence
+    dataset = dataset.map(lambda sequence, iter_progress: (
+        apply_subsampling(sequence, sampling_table), iter_progress)
+    )
+    # Filter out sequences that don't have at least 2 tokens
+    # We can't slide a window on a single token!
+    dataset = dataset.filter(lambda sequence, iter_progress:
+        tf.greater(tf.size(sequence), 1)
+    )
+    # Make skip-gram pairs
+    dataset = dataset.map(lambda sequence, iter_progress:
+        (make_skipgram_pairs(sequence, window_size), iter_progress)
+    )
+    # Now, we have training (target, context) word pairs
+    # instead of int tensor sequences.
     #
-    # For natural text, this is often a good enough approximation for the true
-    # word frequency; however, we can do better by actually computing the frequency
-    # of each word in the vocabulary.
-    if use_subsampling:
-        sampling_table = tf.keras.preprocessing.sequence.make_sampling_table(vocab_size)
-    else:
-        sampling_table = None
-
-    for sequence in tqdm(sequences, disable=not show_progress_bar, total=progress_bar_total):
-        skipgram_pairs = make_skipgram_pairs(
-            sequence,
-            window_size,
-            sampling_table=sampling_table
-        )
-
-        # Create n_negative_samples for each positve (target, context) word-pair,
-        # by sampling random words from the vocabulary (excluding the context word).
-        #
-        # A negative sample refers to a (target, not_context) word-pair where not_context
-        # is NOT the context word of the positive sample (i.e. not_context != context).
-        #
-        # We sample words from the vocabulary according to a Zipfian distribution.
-        # TODO: The intuition towards negative sampling, as proposed by Mikolov et. al.
-        # is to sample words from the vocabulary from a distribution designed to favour
-        # more frequent words. The probability of sampling a word i is given by:
-        #   P(w_i) = [f(w_i)^lambda] / sum(f(w_j)^lambda for j = 0 to n),
-        # where n is the vocabulary size, f : N -> N, gives the frequency of each word
-        # in the vocabulary, and lambda is a hyperparameter (set to 3/4 in the paper).
-        #
-        # As mentioned above, we can approximate the frequency using a Zipf-like distribution
-        # for natural text. But, we can't beat actually knowing the frequency of each word.
-        for target_word, context_word in skipgram_pairs:
-            # Create a tensor of shape (1, 1) that contains the context word.
-            # This is the shape expected by log_uniform_candidate_sampler.
-            true_classes = tf.expand_dims(tf.constant([context_word], dtype=tf.int64), 1)
-            # Sample a random word (index) from the range [0, vocab_size) excluding the
-            # elements of the true_classes tensor (in our case, the context word).
-            #
-            # Returns an int tensor with shape (n_negative_samples,) containing the sampled values.
-            negative_samples, _, _ = tf.random.log_uniform_candidate_sampler(
-                true_classes=true_classes,
-                num_true=1,
-                num_sampled=n_negative_samples,
-                unique=True,  # Sample without replacement
-                range_max=vocab_size,
-            )
-
-            # Expand dimension of negaitve samples to match true_classes
-            # We need to do this for concatenation to work (outer dims need to match).
-            negative_samples = tf.expand_dims(negative_samples, 1)
-            # Concatenate the negative samples to the positive sample
-            context = tf.concat([true_classes, negative_samples], 0)
-            # label is a int tensor of the form 1, 0, ..., 0, where the element at index i
-            # indicates whether context[i] is a positive (1) or negative (0) sample.
-            label = tf.constant([1] + [0] * n_negative_samples, dtype=tf.int64)
-
-            targets.append(target_word)
-            contexts.append(context)
-            labels.append(label)
-
-    return targets, contexts, labels
-
-
-def read_lines(filenames: List[Union[Path, str]]) -> List[str]:
-    """Return a list of non-empty lines from the given files."""
-    all_lines = []
-    for file in filenames:
-        with open(file) as fp:
-            lines = fp.read().splitlines()
-            # Filter out empty lines
-            #
-            # This is a nice Python trick, where empty strings
-            # are treated as a False when converted to booleans.
-            all_lines.extend([line for line in lines if line])
-    return all_lines
-
-
-def load_dataset(filenames: List[Union[Path, str]],
-                 window_size: int,
-                 n_negative_samples: int,
-                 max_vocab_size: Optional[int] = None,
-                 sequence_length: Optional[int] = None,
-                 batch_size: Optional[int] = 1024,
-                 shuffle_buffer_size: Optional[int] = 10000) \
-        -> Tuple[tf.data.Dataset, Tokenizer]:
-    """
-    Load a corpus from the given files as a tf.data.Dataset object.
-
-    Return a tf.data.Dataset consisting of feature-label pairs of the
-    form ((target, context), label), and a Tokenizer instance fitted
-    on the dataset.
-
-    The shape of the dataset is [
-        ((batch_size,),
-         (batch_size, 1 + n_negative_samples, 1)),
-         (batch_size, 1 + n_negative_samples)
-    ].
-
-    Args:
-        filenames: A list of filenames to load from.
-            It is expected that these are text files.
-        window_size: The size of the sliding window used to construct sample pairs.
-        n_negative_samples: The number of negative samples to generate per
-            positive context word. Mikolov, et. al. showed that for small
-            datasets, values between 5 and 20 (inclusive) work best, whereas
-            for large datasets, values between 2 and 5 (inclusive) suffice.
-        max_vocab_size: The maximum number of tokens in the vocabulary.
-            If not specified, there is no limit on the number of tokens.
-        sequence_length: The length of each line after tokenization and
-            vectorization. Pads or truncates samples to the same length.
-            If not specified, there is no limit on the sequence length.
-        batch_size: The size of a single batch.
-        shuffle_buffer_size: The size of the buffer used to shuffle data.
-    """
-    # Load the files and read non-empty lines.
-    lines = read_lines(filenames)
-
-    # The Tokenizer will create a vocabulary from strings.
-    # In a nut shell, it standardises the data (lower and strip punctuation),
-    # tokenizes it, and then assigns an integer index to each word.
-    tokenizer = Tokenizer(max_tokens=max_vocab_size)
-
-    # Apply the data to tokenizer to build a vocabulary.
-    start_time = time.time()
-    tokenizer.update(lines)
-    tokenizer_elapsed = time.time() - start_time
-
-    vocab_size = len(tokenizer.inverse_vocabulary)
-    logger.info(
-        f'Created vocabulary from {filenames} (took {tokenizer_elapsed:.2f} seconds). '
-        f'Vocabulary size: {vocab_size} words.'
+    # Transforms the dataset into a list of tuples (pairs, iter_progress)
+    # where pairs is a tuple of rank-1 int tensors and iter_progresses is
+    # a rank-1 float tensor.
+    dataset = dataset.map(lambda samples, iter_progress:
+        # We want an inter_progress entry for each sample pair.
+        # This will be used to calculate the learning rate of the model.
+        (samples, tf.fill(tf.shape(samples)[:1], iter_progress))
     )
-
-    # Encode lines into sequences
-    def _encode_func(x: tf.Tensor) -> tf.Tensor:
-        """Convert string tensors to int tensors using the tokenizer."""
-        x = tf.expand_dims(x, -1)
-        # Wrap the tokenizer encode function in a TensorFlow eager op.
-        # This lets us evaluate tensors eagerly, which the tokenizer needs to do.
-        return tf.squeeze(tf.py_function(
-            tokenizer.encode, [x], tf.int64
-        ))
-
-    # TODO: Gotta optimize this function!! Specifically with generating sequences.
-    # Loading in a 250MB dataset takes 5 hours! Might want to look into parallelising
-    # the sequence generation, or just reducing the dataset size.
-    dataset_lines = tf.data.Dataset.from_tensor_slices(lines)
-    dataset_sequences = dataset_lines.batch(1024) \
-        .prefetch(tf.data.experimental.AUTOTUNE) \
-        .map(_encode_func, num_parallel_calls=16) \
-        .unbatch()
-
-    sequences = dataset_sequences.as_numpy_iterator()
-
-    # Make the training data from sequences
-    logger.info('Creating training data...This may take a while!')
-    targets, contexts, labels = make_training_data(
-        sequences,
-        window_size,
-        n_negative_samples,
-        vocab_size,
-        progress_bar_total=len(lines)
+    # Flatten the dataset into a contiguous collection of (sample, iter_progress) tuples.
+    dataset = dataset.flat_map(lambda samples, iter_progress:
+        # from_tensor_slices takes tensors and transforms it into a new
+        # dataset whose elements are slices of the tensor.
+        # So, we will get a new dataset with nested lists whose elements
+        # are tuples of the form: (sample, iter_progress).
+        tf.data.Dataset.from_tensor_slices((samples, iter_progress))
     )
+    # Batch the dataset into tensors with shape (batch_size, 2,).
+    dataset = dataset.batch(batch_size, drop_remainder=True)
 
-    logger.info('Converting training data to tf.data.Dataset...')
-    # Load the training data into a tf.data.Dataset
-    dataset = tf.data.Dataset.from_tensor_slices(((targets, contexts), labels))
-    # Shuffle and batch data
-    dataset = dataset.shuffle(shuffle_buffer_size).batch(batch_size, drop_remainder=True)
-    # Cache and prefetch for performance
-    dataset = dataset.cache().prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-    return dataset, tokenizer
+    def _split_sample_pairs(x: tf.Tensor, iter_progress: tf.Tensor) \
+            -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+        """Split the sample pair tensors into
+        (features, labels, iter_progress) tensor tuples.
+        """
+        # AutoGraph requires us to set the shape of tensors when
+        # it can't automatically infer it from context.
+        x.set_shape((batch_size, 2))
+
+        features = tf.squeeze(x[:, :1], axis=1)
+        labels = tf.squeeze(x[:, 1:], axis=1)
+        iter_progress = tf.cast(iter_progress, tf.float32)
+        return features, labels, iter_progress
+
+    dataset = dataset.map(_split_sample_pairs)
+    return dataset
+
 
 if __name__ == '__main__':
-    import python_ta
+    # import python_ta
     # python_ta.check_all(config={
     #     'extra-imports': [
-    #         'typing',
+    #         'json',
+    #         'string',
+    #         'itertools',
     #         'pathlib',
+    #         'collections',
+    #         'typing',
+    #         'numpy',
     #         'tensorflow',
-    #         'tensorflow.keras.layers.experimental.preprocessing'
     #     ],
-    #     'allowed-io': [],
     #     'max-line-length': 100,
-    #     'disable': ['R1705', 'C0200']
+    #     'disable': ['R1705', 'C0200', 'E9998']
     # })
-
-    # import python_ta.contracts
-    # python_ta.contracts.check_all_contracts()
 
     import doctest
     doctest.testmod()
