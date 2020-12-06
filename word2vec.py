@@ -1,4 +1,8 @@
-"""Implementation of the Word2Vec model architecture with subsampling and negative sampling."""
+"""Implementation of the Word2Vec model architecture with subsampling and negative sampling.
+
+Based on the original Word2Vec paper ("Efficient Estimation of Word Representations in Vector Space")
+and the accomponying C source code by Mikolov et. al. (https://github.com/tmikolov/word2vec).
+"""
 
 import json
 import string
@@ -206,15 +210,14 @@ class Tokenizer:
             self.reset()
 
         # Re-initialise the vocabulary to the default values.
-        # This will reset everything BUT the counter, which we want
-        # to keep since we want word frequency to be persistent.
+        # This will reset everything BUT the counter, which we
+        # want to keep since we want word frequency to be persistent.
         self._initialise_defaults()
         for x in data:
             self._counter.update(self._tokenize_string(x))
 
         tokens = self._counter.most_common(n=self.max_tokens)
-        # Filter out tokens that don't appear at least min_word_frequency
-        # times in the corpus.
+        # Filter out tokens that don't appear at least min_word_frequency times in the corpus.
         tokens = [
             (word, frequency) for word, frequency in tokens
             if frequency >= self.min_word_frequency
@@ -332,6 +335,7 @@ def apply_subsampling(sequence: tf.Tensor, sampling_table: tf.Tensor,
     probabilities = tf.gather(sampling_table, sequence)
     # Random sample values from 0 to 1
     samples = tf.random.uniform(tf.shape(probabilities), 0, 1)
+    # Sample if and only if the random value is less than the sample probability.
     sequence = tf.boolean_mask(sequence, tf.less(samples, probabilities))
     return sequence
 
@@ -506,6 +510,11 @@ def make_dataset(filenames: List[Union[Path, str]], tokenizer: Tokenizer,
 
     dataset = dataset.map(_split_sample_pairs)
     return dataset
+
+
+class Word2Vec(tf.keras.Model):
+    """Word2Vec model."""
+    # TODO: Umm....implement the model?
 
 
 if __name__ == '__main__':
