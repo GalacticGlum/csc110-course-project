@@ -19,6 +19,7 @@ from typing import (
 )
 
 import numpy as np
+from tqdm import tqdm
 import tensorflow as tf
 
 
@@ -200,6 +201,9 @@ class Tokenizer:
             filenames = []
         elif isinstance(filenames, (str, Path)):
             filenames = [filenames]
+
+        # Convert filenames to string since TensorFlow doesn't like path.Pathlib objects.
+        filenames = [str(file) for file in filenames]
 
         # Combine the given data and the lines of the given files
         # into a single iterator.
@@ -442,6 +446,9 @@ def make_dataset(filenames: List[Union[Path, str]], tokenizer: Tokenizer,
         - window_size > 0
         - batch_size > 0
     """
+    # Convert filenames to string since TensorFlow doesn't like path.Pathlib objects.
+    filenames = [str(file) for file in filenames]
+
     # Get the total number of lines that we have to iterate over
     total_lines = sum(len(list(tf.io.gfile.GFile(file))) for file in filenames) * epochs
 
@@ -693,6 +700,92 @@ class Word2Vec(tf.keras.Model):
             tf.expand_dims(label_cross_entropy, 1),
             pred_cross_entropy
         ], axis=1)
+
+    def train(self, dataset: tf.data.Dataset, logdir: Union[str, Path],
+              initial_lr: Optional[float] = 0.025, target_lr: Optional[float] = 1e-4,
+              log_frequency: Optional[int] = 1000, show_progress_bar: Optional[bool] = True)\
+            -> None:
+        """Train the model.
+
+        Args:
+            dataset: The dataset to train on.
+            logdir: The output directory.
+            initial_lr: The initial learning rate.
+            target_lr: The target learning rate.
+            log_frequency: The frequency at which to log stats, in global steps.
+            show_progress_bar: Whether to show a progress bar while the jobs run.
+        """
+        # Create output directory
+        logdir.mkdir(parents=True, exist_ok=True)
+
+        # Create summary writers (for logging to tensorboard)
+        summary_writer = tf.summary.create_file_writer(str(logdir))
+
+        # Use stochastic gradient descent without learning rate
+        # We will apply the learning rate ourselves, with a custom decay.
+        optimizer = tf.keras.optimizers.SGD(1.0)
+        input_signature = [
+            tf.TensorSpec(shape=(self.batch_size,), dtype=tf.int64),
+            tf.TensorSpec(shape=(self.batch_size,), dtype=tf.int64),
+            tf.TensorSpec(shape=(self.batch_size,), dtype=tf.float32)
+        ]
+
+        @tf.function(input_signature=input_signature)
+        def _train_step(inputs: tf.Tensor, labels: tf.Tensor, iter_progress: tf.Tensor) \
+                -> Tuple[tf.Tensor, tf.Tensor]:
+            """Train the word2vec model for a single step.
+
+            This function computes the training loss and performs backprop using an optimizer.
+
+            Args:
+                inputs: Input features to the model (targets).
+                labels: Correct labels for the model (contexts).
+                model: The model to train.
+                optimizer: An optimizer instance.
+            """
+            loss = self.call(inputs, labels)
+            # Compute gradients
+            gradients = tf.gradients(loss, self.trainable_variables)
+
+            # Linearly interpolate between the initial and target learning rate.
+            t = iter_progress[0]
+            learning_rate = initial_lr * (1 - t) + target_lr * t
+            learning_rate = tf.maximum(learning_rate, target_lr)
+
+            # Apply learning rate to the gradients for each trainable variable/weight.
+            # In our case, this is for the proj, proj_out, and bias layer.
+            for i in range(len(self.trainable_variables)):
+                if hasattr(gradients[i], '_values'):
+                    gradients[i]._values *= learning_rate
+                else:
+                    gradients[i] *= learning_rate
+
+            # Apply gradients for backprop
+            optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+            return loss, learning_rate
+
+        average_loss = 0
+        with tqdm(dataset, disable=not show_progress_bar) as progress_bar:
+            for global_step, (inputs, labels, iter_progress) in enumerate(progress_bar):
+                loss, learning_rate = _train_step(inputs, labels, iter_progress,)
+                average_loss += loss.numpy().mean()
+                if global_step % log_frequency == 0:
+                    if global_step > 0:
+                        average_loss /= log_frequency
+
+                    # Output summary information
+                    progress_bar.write(
+                        f'global step: {global_step}, '
+                        f'average loss: {average_loss}, '
+                        f'learning rate: {learning_rate}'
+                    )
+
+                    with summary_writer.as_default():
+                        tf.summary.scalar('lr', learning_rate, step=global_step)
+                        tf.summary.scalar('loss', average_loss, step=global_step)
+
+                    # Reset average loss
+                    average_loss = 0
 
 
 if __name__ == '__main__':

@@ -1,11 +1,13 @@
 """Helper functions."""
 
+import re
 import random
 from typing import Optional, Union
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 from tqdm import tqdm
+from pathlib import Path
 
 
 def parallel_map(iterables: Union[list, iter], function: callable, n_jobs: Optional[int] = 16,
@@ -115,6 +117,34 @@ def set_seed(seed: int) -> None:
     # Set TensorFlow seed
     import tensorflow as tf
     tf.random.set_seed(seed)
+
+
+def get_next_run_id(directory: Union[str, Path], run_name: str,
+                    initial_id: Optional[int] = 1, padding: Optional[int] = 5) -> str:
+    """
+    Return the next id of the run (i.e. what to name the output folder).
+
+    This looks for all folders in the specified directory whose name,
+    or run id, is in the format "{id}-{run_name}". The next run id
+    prefix is one plus the maximum of all ids with the specified run_name.
+
+    Args:
+        directory: The directory containing all the runs.
+        run_name: The name of the run. This should be unique across different runs.
+        initial_id: The id to start with, if no runs exist.
+        padding: The amount to pad the numerical id.
+    """
+    directory = Path(directory)
+    pattern = r'(\d*)-{}'.format(run_name)
+    next_id = initial_id
+    for path in directory.iterdir():
+        if not path.is_dir(): continue
+
+        m = re.match(pattern, path.name)
+        if not m: continue
+        next_id = max(int(m.group(1)) + 1, next_id)
+
+    return '{}-{}'.format(str(next_id).zfill(padding), run_name)
 
 
 if __name__ == '__main__':
