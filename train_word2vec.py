@@ -23,7 +23,11 @@ def main(args: argparse.Namespace) -> None:
         exit(1)
 
     set_seed(args.seed)
-    tokenizer = Tokenizer()
+    tokenizer = Tokenizer(
+        max_tokens=args.max_tokens,
+        min_word_frequency=args.min_word_frequency,
+        sample_threshold=args.sample_threshold
+    )
 
     start_time = time.time()
     logger.info('Building vocabulary from corpus...')
@@ -56,7 +60,11 @@ def main(args: argparse.Namespace) -> None:
     logger.info(f'Starting training (for {args.epochs} epochs).')
     model.train(dataset, logdir, args.initial_lr, args.target_lr, args.log_freq)
 
-    # Output embeddings
+    # Save embeddings and vocab
+    #
+    # The weights of the projection layer are components of the
+    # embedding vectors. The i-th row of the weight matrix is the
+    # embedding vector for the word whose encoded index is i.
     proj = model.weights[0].numpy()
     np.save(logdir / 'proj_weights', proj)
     # Save the tokenizer state
