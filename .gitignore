@@ -135,5 +135,6 @@ test_data/
 # Python-TA
 pyta_report.html
 
-# Data
+# Data and output
 data/
+output/
