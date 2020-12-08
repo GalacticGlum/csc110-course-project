@@ -50,6 +50,16 @@ class Tokenizer:
             given by Mikolov et. al. in their Word2Vec paper.
         - min_word_frequency: The minimum frequency for words to be included in
             the vocabulary.
+        - vocabulary: A dictionary mapping a string (word) to its encoded index.
+        - words: A list of strings, where the i-th element of the list
+            corresponds to the word with encoded index i.
+        - frequencies: A list of integers, where the i-th element of the list
+            corresponds to frequency of the word with encoded index i.
+        - sampling_table: A list of floats giving the probability of sampling words.
+            The i-th element of the table gives the probability of sampling the word.
+        - corpus_size: The number of words in the corpus.
+        - vocab_size: The size of the vocabulary.
+
     """
     # Private Instance Attributes:
     #   - _vocabulary: A dictionary mapping a string (word) to its encoded index.
