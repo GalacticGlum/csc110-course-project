@@ -4,6 +4,7 @@ Based on the original Word2Vec paper ("Efficient Estimation of Word Representati
 and the accomponying C source code by Mikolov et. al. (https://github.com/tmikolov/word2vec).
 """
 
+import re
 import json
 import string
 import itertools
@@ -19,8 +20,10 @@ from typing import (
 )
 
 import numpy as np
-from tqdm import tqdm
+import contractions
 import tensorflow as tf
+from tqdm import tqdm
+from nltk.tokenize import TweetTokenizer
 
 
 def read_lines(filenames: List[Union[Path, str]]) -> Iterator:
@@ -62,6 +65,7 @@ class Tokenizer:
 
     """
     # Private Instance Attributes:
+    #   - _tweet_tokenizer: An nltk tokenizer instance for tokenizing tweets.
     #   - _vocabulary: A dictionary mapping a string (word) to its encoded index.
     #   - _words: A list of strings, where the i-th element of
     #       the list corresponds to the word with encoded index i.
@@ -72,14 +76,14 @@ class Tokenizer:
     #       The i-th element of the table gives the probability of sampling the word
     #       whose encoded index is i.
     #   - _corpus_size: The number of words in the corpus.
-    #   - _remove_punctuation_trans: A translation for removing puntuation from a string.
+    #   - _remove_punctuation_pattern: A regex pattern for removing puntuation from a string.
     _vocabulary: Dict[str, int]
     _words: List[str]
     _frequencies: List[int]
     _counter: Counter
     _sampling_table: List[float]
     _corpus_size: int
-    _remove_punctuation_trans: object
+    _remove_punctuation_pattern: re.Pattern
 
     def __init__(self, unknown_index: Optional[int] = -1,
                  max_tokens: Optional[int] = None,
@@ -104,7 +108,8 @@ class Tokenizer:
         self.sample_threshold = sample_threshold
 
         self._counter = Counter()
-        self._remove_punctuation_trans = str.maketrans('', '', string.punctuation)
+        self._tweet_tokenizer = TweetTokenizer(strip_handles=True, reduce_len=True)
+        self._remove_punctuation_pattern = re.compile(f'[{string.punctuation}]+')
         self._initialise_defaults()
 
     def _initialise_defaults(self, reset_counter: Optional[bool] = False) -> None:
@@ -168,8 +173,16 @@ class Tokenizer:
         This removes punctuation, converts the string to lowercase,
         strips leading and trailing whitespace, and splits by spaces.
         """
-        x = x.translate(self._remove_punctuation_trans)
-        return x.lower().strip().split()
+        # Expand contractions and convert to lowercase
+        x = contractions.fix(x).lower()
+        tokens = self._tweet_tokenizer.tokenize(x)
+        # Filter out tokens that are just punctuation.
+        tokens = [
+            token for token in tokens
+            if not re.fullmatch(self._remove_punctuation_pattern, token)
+        ]
+
+        return tokens
 
     def _get_sample_probability(self, frequency: int) -> float:
         """
@@ -802,6 +815,7 @@ if __name__ == '__main__':
     import python_ta
     python_ta.check_all(config={
         'extra-imports': [
+            're',
             'json',
             'string',
             'itertools',
@@ -810,6 +824,9 @@ if __name__ == '__main__':
             'typing',
             'numpy',
             'tensorflow',
+            'nltk.tokenize',
+            'contractions',
+            'tqdm'
         ],
         'max-line-length': 100,
         'disable': ['R1705', 'C0200', 'E9998']
