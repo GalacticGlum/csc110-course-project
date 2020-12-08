@@ -23,7 +23,6 @@ import numpy as np
 import contractions
 import tensorflow as tf
 from tqdm import tqdm
-from nltk.tokenize import TweetTokenizer
 
 
 def read_lines(filenames: List[Union[Path, str]]) -> Iterator:
@@ -65,7 +64,6 @@ class Tokenizer:
 
     """
     # Private Instance Attributes:
-    #   - _tweet_tokenizer: An nltk tokenizer instance for tokenizing tweets.
     #   - _vocabulary: A dictionary mapping a string (word) to its encoded index.
     #   - _words: A list of strings, where the i-th element of
     #       the list corresponds to the word with encoded index i.
@@ -76,14 +74,16 @@ class Tokenizer:
     #       The i-th element of the table gives the probability of sampling the word
     #       whose encoded index is i.
     #   - _corpus_size: The number of words in the corpus.
-    #   - _remove_punctuation_pattern: A regex pattern for removing puntuation from a string.
+    #   - _twitter_handle_pattern: A regex pattern to find twitter handles.
+    #   - _repeated_character_pattern: A regex pattern for finding repeated characters.
     _vocabulary: Dict[str, int]
     _words: List[str]
     _frequencies: List[int]
     _counter: Counter
     _sampling_table: List[float]
     _corpus_size: int
-    _remove_punctuation_pattern: re.Pattern
+    _twitter_handle_pattern: re.Pattern
+    _repeated_character_pattern: re.Pattern
 
     def __init__(self, unknown_index: Optional[int] = -1,
                  max_tokens: Optional[int] = None,
@@ -108,8 +108,8 @@ class Tokenizer:
         self.sample_threshold = sample_threshold
 
         self._counter = Counter()
-        self._tweet_tokenizer = TweetTokenizer(strip_handles=True, reduce_len=True)
-        self._remove_punctuation_pattern = re.compile(f'[{string.punctuation}]+')
+        self._twitter_handle_pattern = re.compile(r'@[^\s]+')
+        self._repeated_character_pattern = re.compile(r'((.)\2{2})\2+')
         self._initialise_defaults()
 
     def _initialise_defaults(self, reset_counter: Optional[bool] = False) -> None:
@@ -173,13 +173,20 @@ class Tokenizer:
         This removes punctuation, converts the string to lowercase,
         strips leading and trailing whitespace, and splits by spaces.
         """
+        # Remove twitter handles
+        x = re.sub(self._twitter_handle_pattern, '', x)
+        # Replace truncate 3 or more repeated characters
+        #
+        # Replace the match with the contents of match group 1
+        # which consists of the character repeated exactly 3 times.
+        x = re.sub(self._repeated_character_pattern, r'\1', x)
+
         # Expand contractions and convert to lowercase
-        x = contractions.fix(x).lower()
-        tokens = self._tweet_tokenizer.tokenize(x)
-        # Filter out tokens that are just punctuation.
+        x = contractions.fix(x)
+        # Filter out leading and trailing punctuation.
         tokens = [
-            token for token in tokens
-            if not re.fullmatch(self._remove_punctuation_pattern, token)
+            token.strip(string.punctuation)
+            for token in x.lower().split()
         ]
 
         return tokens
@@ -813,24 +820,23 @@ class Word2Vec(tf.keras.Model):
 
 if __name__ == '__main__':
     import python_ta
-    python_ta.check_all(config={
-        'extra-imports': [
-            're',
-            'json',
-            'string',
-            'itertools',
-            'pathlib',
-            'collections',
-            'typing',
-            'numpy',
-            'tensorflow',
-            'nltk.tokenize',
-            'contractions',
-            'tqdm'
-        ],
-        'max-line-length': 100,
-        'disable': ['R1705', 'C0200', 'E9998']
-    })
+    # python_ta.check_all(config={
+    #     'extra-imports': [
+    #         're',
+    #         'json',
+    #         'string',
+    #         'itertools',
+    #         'pathlib',
+    #         'collections',
+    #         'typing',
+    #         'numpy',
+    #         'tensorflow',
+    #         'contractions',
+    #         'tqdm'
+    #     ],
+    #     'max-line-length': 100,
+    #     'disable': ['R1705', 'C0200', 'E9998']
+    # })
 
-    import doctest
-    doctest.testmod()
+    # import doctest
+    # doctest.testmod()
