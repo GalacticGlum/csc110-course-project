@@ -13,4 +13,6 @@ hurry.filesize
 internetarchive
 
 # Data processing and machine learning
+nltk
+contractions>0.0.18
 tensorflow
