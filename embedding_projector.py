@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import heapq
+import argparse
 import numpy as np
 from pathlib import Path
+from logger import logger
 from typing import (
     Optional,
     Tuple,
@@ -136,3 +138,79 @@ class WordEmbeddings:
             words = file.read().splitlines()
         embeddings = np.load(weights_filepath)
         return cls(embeddings, words)
+
+
+import signal
+from tornado.ioloop import IOLoop
+
+from bokeh.layouts import column
+from bokeh.models import ColumnDataSource, Slider
+from bokeh.plotting import figure
+from bokeh.server.server import Server
+from bokeh.themes import Theme
+from bokeh.sampledata.sea_surface_temperature import sea_surface_temperature
+
+def _render(doc):
+    df = sea_surface_temperature.copy()
+    source = ColumnDataSource(data=df)
+    plot = figure(x_axis_type='datetime', y_range=(0, 25), y_axis_label='Temperature (Celsius)',
+                  title="Sea Surface Temperature at 43.18, -70.43")
+    plot.line('time', 'temperature', source=source)
+
+    def callback(attr, old, new):
+        if new == 0:
+            data = df
+        else:
+            data = df.rolling('{0}D'.format(new)).mean()
+        source.data = dict(ColumnDataSource(data=data).data)
+
+    slider = Slider(start=0, end=30, value=0, step=1, title="Smoothing by N Days")
+    slider.on_change('value', callback)
+
+    doc.add_root(column(slider, plot))
+
+
+def main(args: argparse.Namespace) -> None:
+    """Main entrypoint for the script."""
+    # Ensure that at least on data argument was provided
+    if args.checkpoint_directory is None and \
+       args.weights_filepath is None and \
+        args.vocab_filepath is None:
+        logger.error('One of --checkpoints / (--weights-filepath and --vocab-filepath) is required!')
+        exit(1)
+
+    # Make server object
+    server = Server({'/': _render}, port=args.port)
+    def _handle_interrupt(signum, frame):
+        """Handle a interrupt signal."""
+        def _stop_server():
+            """Stop the server."""
+            logger.warning('Stopping the server!')
+            IOLoop.instance().stop()
+        # Add the stop server callback
+        IOLoop.instance().add_callback_from_signal(_stop_server)
+
+    # Add interrupt signal handling
+    signal.signal(signal.SIGINT, _handle_interrupt)
+
+    server.start()
+    server.io_loop.add_callback(server.show, '/')
+    server.io_loop.start()
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Tool for visualising embeddings in 2D and 3D space.')
+    parser.add_argument('--checkpoint', dest='checkpoint_directory', type=Path, default=None,
+                        help='Path to a checkpoint directory containing a numpy file with the trained '
+                             'embedding weights (proj_weights.npy) and a text file with the model '
+                             'vocabulary (vocab.txt)')
+    parser.add_argument('-w', '--weights-filepath', type=Path, default=None,
+                        help='Path to a numpy file containing the trained embedding weights. '
+                             'Use this instead of specifying the checkpoint directory.')
+    parser.add_argument('-v', '--vocab-filepath', type=Path, default=None,
+                        help='Path to a text file containing the model vocabulary. '
+                             'Use this instead of specifying the checkpoint directory.')
+    parser.add_argument('--port', type=int, default=5006,
+                        help='The port to open the server on. Defaults to 5006.')
+    parser.add_argument
+    main(parser.parse_args())
