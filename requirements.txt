@@ -15,6 +15,8 @@ internetarchive
 # Data processing and machine learning
 contractions>0.0.18
 tensorflow
+sklearn
 
 # Visualization
 dash==1.18.0
+ipywidgets>=7.0.0

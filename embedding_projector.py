@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import heapq
 import argparse
-import numpy as np
-from pathlib import Path
-from logger import logger
 from typing import (
     Optional,
     Tuple,
     List,
     Dict
 )
+
+import numpy as np
+from sklearn import decomposition
+from pathlib import Path
+from logger import logger
 
 
 def cosine_similarity(u: np.ndarray, v: np.ndarray) -> float:
@@ -29,7 +31,7 @@ class WordEmbeddings:
     Represents a discretized vector space embedding the words of a vocabulary.
 
     Instance Attributes:
-        - embeddings: A matrix with shape (vocab_size, n) where n is the dimensionality
+        - weights: A matrix with shape (vocab_size, n) where n is the dimensionality
             of the embedding vectors (i.e. the number of components). The i-th row of
             the matrix should corresponding to the embedding vector for the word with
             encoded index i.
@@ -40,7 +42,7 @@ class WordEmbeddings:
     #   - _vocabulary: A dictionary mapping a word to its index.
     _vocabulary: Dict[str, int]
 
-    def __init__(self, embeddings: np.ndarray, words: List[str]) -> None:
+    def __init__(self, weights: np.ndarray, words: List[str]) -> None:
         """Initialize this word embeddings.
 
         Args:
@@ -53,7 +55,7 @@ class WordEmbeddings:
             words: A list of strings, where the i-th element of the list
                 corresponds to the word with encoded index i.
         """
-        self.embeddings = embeddings
+        self.weights = weights
         self.words = words
         self._vocabulary = {word: i for i, word in enumerate(words)}
 
@@ -95,13 +97,13 @@ class WordEmbeddings:
         word_index = None
         if vector is None:
             word_index = self._vocabulary[word]
-            vector = self.embeddings[word_index]
+            vector = self.weights[word_index]
 
         # A list of 2-element tuples containing the similarity to the search word
         # and the index of the word in the vocabulary.
         all_similarities = [
             (similarity_func(vector, u), i)
-            for i, u in enumerate(self.embeddings)
+            for i, u in enumerate(self.weights)
             if i != word_index   # We don't want to include the search word
         ]
 
@@ -114,13 +116,13 @@ class WordEmbeddings:
 
         return most_similar
 
-    def get_embedding(self, word: str) -> np.ndarray:
+    def get_vector(self, word: str) -> np.ndarray:
         """Return the embedding vector for the given word."""
-        return self.embeddings[self._vocabulary[word]]
+        return self.weights[self._vocabulary[word]]
 
     def __getitem__(self, word: str) -> np.ndarray:
         """Return the embedding vector for the given word."""
-        return self.get_embedding(word)
+        return self.get_vector(word)
 
     @classmethod
     def load(cls, weights_filepath: Path, vocab_filepath: Path) -> WordEmbeddings:
@@ -139,40 +141,131 @@ class WordEmbeddings:
         embeddings = np.load(weights_filepath)
         return cls(embeddings, words)
 
+import plotly.express as px
+import plotly.graph_objs as go
+
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
-import plotly.express as px
-import pandas as pd
 
-def make_app() -> dash.Dash:
+
+def _make_embedding_scatter3d(weights: np.ndarray, words: List[str]) -> go.Figure:
+    """Make a 3D scatter plot given the embedding weight data.
+
+    Args:
+        weights: 3-dimensional matrix of data containing the embeddings.
+        words: A list of strings containing the words of the model vocabulary.
+    """
+    # Split the matrix into separate vectors containing components
+    x, y, z = np.squeeze(np.split(weights, [1, 2], axis=1))
+
+    # Create the figure for displaying the embedding points
+    embedding_fig = px.scatter_3d(
+        x=x, y=y, z=z,
+        hover_name=words,
+        opacity=0.5
+    )
+
+    # Update the axis settings
+    axis_values = {
+        'backgroundcolor': 'white',
+        'gridcolor': '#D9D9D9'
+    }
+    embedding_fig.update_layout(
+        scene={
+            'xaxis': axis_values,
+            'yaxis': axis_values,
+            'zaxis': axis_values,
+            'aspectmode': 'cube'
+        }
+    )
+
+    return embedding_fig
+
+
+def _make_app(reduced_embeddings: np.ndarray, words: List[str]) -> dash.Dash:
+    """Make the Dash app for the embedding projector.
+
+    Args:
+        reduced_embeddings: The embedding vectors reduced into 3-dimensions.
+    """
     external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
     app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
-    # assume you have a "long-form" data frame
-    # see https://plotly.com/python/px-arguments/ for more options
-    df = pd.DataFrame({
-        "Fruit": ["Apples", "Oranges", "Bananas", "Apples", "Oranges", "Bananas"],
-        "Amount": [4, 1, 2, 2, 4, 5],
-        "City": ["SF", "SF", "SF", "Montreal", "Montreal", "Montreal"]
-    })
-
-    fig = px.bar(df, x="Fruit", y="Amount", color="City", barmode="group")
-
     app.layout = html.Div(children=[
-        html.H1(children='Hello Dash'),
-
-        html.Div(children='''
-            Dash: A web application framework for Python.
-        '''),
-
-        dcc.Graph(
-            id='example-graph',
-            figure=fig
-        )
+        html.H1(children='Embedding Projector'),
+        html.Div([
+            html.Div([
+                html.Div([
+                    html.H3('DATA', style={'font-weight': 'bold'}),
+                ]),
+                html.Div([
+                    html.H3('PCA', style={'font-weight': 'bold'}),
+                    html.Label('Component #1 (X)'),
+                    dcc.Dropdown(
+                        options=[
+                            {'label': 'New York City', 'value': 'NYC'},
+                            {'label': u'Montréal', 'value': 'MTL'},
+                            {'label': 'San Francisco', 'value': 'SF'}
+                        ],
+                        value='NYC'
+                    ),
+                    html.Label('Component #1 (Y)'),
+                    dcc.Dropdown(
+                        options=[
+                            {'label': 'New York City', 'value': 'NYC'},
+                            {'label': u'Montréal', 'value': 'MTL'},
+                            {'label': 'San Francisco', 'value': 'SF'}
+                        ],
+                        value='NYC'
+                    ),
+                    html.Div([
+                        html.Label('Component #3 (Z)', className='ten columns'),
+                        dcc.Checklist(
+                            options=[{'label': '', 'value': 'use_z_component'}],
+                            value=['use_z_component'],
+                            className='two columns'
+                        )
+                    ], className='row'),
+                    dcc.Dropdown(
+                        options=[
+                            {'label': 'New York City', 'value': 'NYC'},
+                            {'label': u'Montréal', 'value': 'MTL'},
+                            {'label': 'San Francisco', 'value': 'SF'}
+                        ],
+                        value='NYC'
+                    )
+                ])
+            ], className='two columns'),
+            html.Div([
+                dcc.Graph(id='embedding-graph',
+                          figure=_make_embedding_scatter3d(reduced_embeddings, words),
+                          style={'height': '100vh'}
+                )
+            ], className='ten columns')
+        ], className='row'),
     ])
 
     return app
+
+
+def embedding_projector(embeddings: WordEmbeddings, debug: Optional[bool] = False,
+                        port: Optional[int] = 5006) -> None:
+    """Start the embedding projector given word embeddings."""
+    logger.info('Spherizing data')
+    # Shift each point by the centroid
+    centroid = np.mean(embeddings.weights, axis=0)
+    weights = embeddings.weights - centroid
+    # Normalize data to unit vectors
+    weights = weights / np.linalg.norm(weights, axis=-1, keepdims=True)
+
+    logger.info('Computing PCA...')
+    pca = decomposition.PCA(n_components=3)
+    pca.fit(weights)
+    reduced_weights = pca.transform(weights)
+
+    app = _make_app(reduced_weights, embeddings.words)
+    app.run_server(debug=debug, port=port)
 
 
 def main(args: argparse.Namespace) -> None:
@@ -184,8 +277,15 @@ def main(args: argparse.Namespace) -> None:
         logger.error('One of --checkpoints / (--weights-filepath and --vocab-filepath) is required!')
         exit(1)
 
-    app = make_app()
-    app.run_server(debug=args.debug, port=args.port)
+    if args.checkpoint_directory is not None:
+        weights_filepath = args.checkpoint_directory / 'proj_weights.npy'
+        vocab_filepath = args.checkpoint_directory / 'vocab.txt'
+    else:
+        weights_filepath = args.weights_filepath
+        args.vocab_filepath = args.vocab_filepath
+
+    embeddings = WordEmbeddings.load(weights_filepath, vocab_filepath)
+    embedding_projector(embeddings, debug=args.debug, port=args.port)
 
 
 if __name__ == '__main__':
