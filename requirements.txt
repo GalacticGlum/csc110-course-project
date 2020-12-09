@@ -17,4 +17,4 @@ contractions>0.0.18
 tensorflow
 
 # Visualization
-bokeh
+dash==1.18.0
