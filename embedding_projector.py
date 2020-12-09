@@ -17,6 +17,14 @@ from sklearn import decomposition
 from pathlib import Path
 from logger import logger
 
+import plotly.express as px
+import plotly.graph_objs as go
+
+import dash
+import dash_core_components as dcc
+import dash_html_components as html
+from dash.dependencies import Input, Output
+
 
 def cosine_similarity(u: np.ndarray, v: np.ndarray) -> float:
     """Return the cosine similarity of the two given vectors.
@@ -172,15 +180,6 @@ class WordEmbeddings:
         if self.name_metadata is None:
             return super().__str__()
         return self.name_metadata
-
-
-import plotly.express as px
-import plotly.graph_objs as go
-
-import dash
-import dash_core_components as dcc
-import dash_html_components as html
-from dash.dependencies import Input, Output
 
 
 def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray, \
