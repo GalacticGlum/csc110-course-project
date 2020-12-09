@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import heapq
+import tempfile
 import argparse
 from typing import (
     Optional,
@@ -37,27 +38,33 @@ class WordEmbeddings:
             encoded index i.
         - words: A list of strings, where the i-th element of the list
                 corresponds to the word with encoded index i.
+        - weights_filepath: The path to the weights file.
+        - vocab_filepath: The path to the vocab file.
+        - name_metadata: The name of the word embeddings checkpoint.
     """
     # Private Instance Attributes:
     #   - _vocabulary: A dictionary mapping a word to its index.
     _vocabulary: Dict[str, int]
 
-    def __init__(self, weights: np.ndarray, words: List[str]) -> None:
+    def __init__(self, weights_filepath: Path, vocab_filepath: Path,
+                 name_metadata: Optional[str] = None) -> None:
         """Initialize this word embeddings.
 
         Args:
-            embeddings: A matrix with shape (vocab_size, n) where n is the dimensionality
-                of the embedding vectors (i.e. the number of components). The i-th row of
-                the matrix should corresponding to the embedding vector for the word with
-                encoded index i.
-
-                This is also the size of the hidden layer in the Word2Vec model.
-            words: A list of strings, where the i-th element of the list
-                corresponds to the word with encoded index i.
+            weights_filepath: Filepath to a numpy file containing trained model weights
+                for the projection layer, corresponding to the learned embedding vectors
+                of the words.
+            vocab_filepath: A text file containing words of the vocabulary sorted in increasing
+                order of the index, separated by new lines (i.e. the word on line 1 indicates
+                the word with encoded index 0, and so on).
+            name_metadata: The name of the word embeddings checkpoint.
         """
-        self.weights = weights
-        self.words = words
-        self._vocabulary = {word: i for i, word in enumerate(words)}
+        with open(vocab_filepath) as file:
+            self.words = file.read().splitlines()
+
+        self.weights = np.load(weights_filepath)
+        self.name_metadata = name_metadata
+        self._vocabulary = {word: i for i, word in enumerate(self.words)}
 
     def most_similar(self, word: Optional[str] = None, k: Optional[int] = None,
                      similarity_func: Optional[callable] = None,
@@ -124,22 +131,12 @@ class WordEmbeddings:
         """Return the embedding vector for the given word."""
         return self.get_vector(word)
 
-    @classmethod
-    def load(cls, weights_filepath: Path, vocab_filepath: Path) -> WordEmbeddings:
-        """Load embeddings from file.
+    def __str__(self) -> str:
+        """Return a string representation of this vector space."""
+        if self.name_metadata is None:
+            return super().__str__()
+        return self.name_metadata
 
-        Args:
-            weights_filepath: Filepath to a numpy file containing trained model weights
-                for the projection layer, corresponding to the learned embedding vectors
-                of the words.
-            vocab_filepath: A text file containing words of the vocabulary sorted in increasing
-                order of the index, separated by new lines (i.e. the word on line 1 indicates
-                the word with encoded index 0, and so on).
-        """
-        with open(vocab_filepath) as file:
-            words = file.read().splitlines()
-        embeddings = np.load(weights_filepath)
-        return cls(embeddings, words)
 
 import plotly.express as px
 import plotly.graph_objs as go
@@ -147,6 +144,8 @@ import plotly.graph_objs as go
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
+from dash.dependencies import Input, Output
+from flask_caching import Cache
 
 
 def _make_embedding_scatter3d(weights: np.ndarray, words: List[str]) -> go.Figure:
@@ -183,88 +182,136 @@ def _make_embedding_scatter3d(weights: np.ndarray, words: List[str]) -> go.Figur
     return embedding_fig
 
 
-def _make_app(reduced_embeddings: np.ndarray, words: List[str]) -> dash.Dash:
+def _make_app(embeddings_list: List[WordEmbeddings], cache_directory: Optional[Path] = None) \
+        -> dash.Dash:
     """Make the Dash app for the embedding projector.
 
     Args:
-        reduced_embeddings: The embedding vectors reduced into 3-dimensions.
+        embeddings_list: A list of word embeddings.
+        cache_directory: The directory to save cached data.
+            If unspecified, defaults to the OS temp directory.
+
+    Preconditions:
+        - len(embeddings_list) > 0
     """
     external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
     app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
+    # Create cache
+    cache = Cache()
+
+    if cache_directory is None:
+        # Default to the OS temporary directory
+        cache_directory = Path(tempfile.gettempdir()) / 'embedding_projector'
+
+    cache.init_app(app.server, config={
+        'CACHE_TYPE': 'filesystem',
+        'CACHE_DIR': str(cache_directory.absolute())
+    })
+
     app.layout = html.Div(children=[
         html.H1(children='Embedding Projector'),
+        # We use a hidden div to run callbacks with no output element.
+        # For example, when we want to do some data processing (such as computing the PCA).
+        html.Div(id='hidden-div', style={'display': 'none'}),
         html.Div([
             html.Div([
                 html.Div([
                     html.H3('DATA', style={'font-weight': 'bold'}),
+                    html.Label('Embeddings'),
+                    dcc.Dropdown(id='embeddings-dropdown',
+                        options=[
+                            {'label': str(embeddings), 'value': i}
+                            for i, embeddings in enumerate(embeddings_list)
+                        ],
+                        clearable=False,
+                        value=0
+                    ),
                 ]),
                 html.Div([
                     html.H3('PCA', style={'font-weight': 'bold'}),
-                    html.Label('Component #1 (X)'),
-                    dcc.Dropdown(
-                        options=[
-                            {'label': 'New York City', 'value': 'NYC'},
-                            {'label': u'Montréal', 'value': 'MTL'},
-                            {'label': 'San Francisco', 'value': 'SF'}
-                        ],
-                        value='NYC'
-                    ),
-                    html.Label('Component #1 (Y)'),
-                    dcc.Dropdown(
-                        options=[
-                            {'label': 'New York City', 'value': 'NYC'},
-                            {'label': u'Montréal', 'value': 'MTL'},
-                            {'label': 'San Francisco', 'value': 'SF'}
-                        ],
-                        value='NYC'
-                    ),
+                    html.Label('X'),
+                    dcc.Dropdown(id='x-component-dropdown', value=0),
+                    html.Label('Y'),
+                    dcc.Dropdown(id='y-component-dropdown', value=1),
                     html.Div([
-                        html.Label('Component #3 (Z)', className='ten columns'),
+                        html.Label('Z', className='ten columns'),
                         dcc.Checklist(
                             options=[{'label': '', 'value': 'use_z_component'}],
                             value=['use_z_component'],
                             className='two columns'
                         )
                     ], className='row'),
-                    dcc.Dropdown(
-                        options=[
-                            {'label': 'New York City', 'value': 'NYC'},
-                            {'label': u'Montréal', 'value': 'MTL'},
-                            {'label': 'San Francisco', 'value': 'SF'}
-                        ],
-                        value='NYC'
-                    )
+                    dcc.Dropdown(id='z-component-dropdown', value=2)
                 ])
             ], className='two columns'),
             html.Div([
-                dcc.Graph(id='embedding-graph',
-                          figure=_make_embedding_scatter3d(reduced_embeddings, words),
-                          style={'height': '100vh'}
+                dcc.Loading(id='embedding-graph-loading',
+                    children=[html.Div(id='embedding-graph')],
+                    type='default'
                 )
             ], className='ten columns')
         ], className='row'),
     ])
 
+    @app.callback([
+        Output('embedding-graph', 'children'),
+        Output('x-component-dropdown', 'options'),
+        Output('y-component-dropdown', 'options'),
+        Output('z-component-dropdown', 'options')],
+        [Input('embeddings-dropdown', 'value')])
+    def embeddings_changed(index):
+        # Get embeddings
+        embeddings = embeddings_list[index]
+        if cache.get('index') != index:
+            logger.info('Spherizing data')
+            # Shift each point by the centroid
+            centroid = np.mean(embeddings.weights, axis=0)
+            weights = embeddings.weights - centroid
+            # Normalize data to unit vectors
+            weights = weights / np.linalg.norm(weights, axis=-1, keepdims=True)
+
+            logger.info('Computing PCA...')
+            pca = decomposition.PCA(n_components=3)
+            pca.fit(weights)
+            reduced_embeddings = pca.transform(weights)
+
+            # Save in the cache
+            cache.set('pca', pca)
+            cache.set('reduced_embeddings', reduced_embeddings)
+            cache.set('index', index)
+        else:
+            pca = cache.get('pca')
+            reduced_embeddings = cache.get('reduced_embeddings')
+
+        # Update the embedding graph
+        scatter = _make_embedding_scatter3d(reduced_embeddings, embeddings.words)
+        embedding_graph = dcc.Graph(id='embedding-graph',
+            figure=scatter,
+            style={'height': '100vh'}
+        )
+
+        component_options = [
+            {'label': f'Component #{i + 1} (var: {variance * 100:.2f}%)', 'value': i}
+            for i, variance in enumerate(pca.explained_variance_ratio_)
+        ]
+
+        return (
+            embedding_graph,    # Output for embedding-graph
+            component_options,  # Output for x-component-dropdown
+            component_options,  # Output for z-component-dropdown
+            component_options   # Output for y-component-dropdown
+        )
+
     return app
 
 
-def embedding_projector(embeddings: WordEmbeddings, debug: Optional[bool] = False,
-                        port: Optional[int] = 5006) -> None:
+def embedding_projector(embeddings_list: List[WordEmbeddings],
+                        debug: Optional[bool] = False,
+                        port: Optional[int] = 5006,
+                        cache_directory: Optional[Path] = None) -> None:
     """Start the embedding projector given word embeddings."""
-    logger.info('Spherizing data')
-    # Shift each point by the centroid
-    centroid = np.mean(embeddings.weights, axis=0)
-    weights = embeddings.weights - centroid
-    # Normalize data to unit vectors
-    weights = weights / np.linalg.norm(weights, axis=-1, keepdims=True)
-
-    logger.info('Computing PCA...')
-    pca = decomposition.PCA(n_components=3)
-    pca.fit(weights)
-    reduced_weights = pca.transform(weights)
-
-    app = _make_app(reduced_weights, embeddings.words)
+    app = _make_app(embeddings_list, cache_directory=cache_directory)
     app.run_server(debug=debug, port=port)
 
 
@@ -284,8 +331,18 @@ def main(args: argparse.Namespace) -> None:
         weights_filepath = args.weights_filepath
         args.vocab_filepath = args.vocab_filepath
 
-    embeddings = WordEmbeddings.load(weights_filepath, vocab_filepath)
-    embedding_projector(embeddings, debug=args.debug, port=args.port)
+    embeddings = WordEmbeddings(
+        weights_filepath, vocab_filepath,
+        name_metadata=weights_filepath.parent.stem
+    )
+
+    # Start the embedding projector
+    embedding_projector(
+        [embeddings],
+        debug=args.debug,
+        port=args.port,
+        cache_directory=args.cache_directory
+    )
 
 
 if __name__ == '__main__':
@@ -304,5 +361,7 @@ if __name__ == '__main__':
                         help='The port to open the server on. Defaults to 5006.')
     parser.add_argument('--debug', action='store_true', dest='debug',
                         help='Whether to run the app in debug mode.')
+    parser.add_argument('--cache-dir', dest='cache_directory', type=Path, default=None,
+                        help='The directory to save cached data. Defaults to the OS temp dir.')
     parser.add_argument
     main(parser.parse_args())

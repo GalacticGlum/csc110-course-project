@@ -20,3 +20,4 @@ sklearn
 # Visualization
 dash==1.18.0
 ipywidgets>=7.0.0
+flask_caching
