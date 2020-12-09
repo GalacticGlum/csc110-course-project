@@ -287,8 +287,8 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
         Output('x-component-dropdown', 'options'),
         Output('y-component-dropdown', 'options'),
         Output('z-component-dropdown', 'options')],
-        [Input('embeddings-dropdown', 'value')])
-    def embeddings_changed(index: int):
+        Input('embeddings-dropdown', 'value'))
+    def embeddings_changed(index: int) -> Tuple[List[dict], List[dict], List[dict]]:
         """Triggered when the selected embedding changes.
         This function recomputes the PCA.
 
@@ -300,14 +300,17 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
         pca, _ = embeddings.pca(force_rebuild=True)
 
         component_options = [
-            {'label': f'Component #{i + 1} (var: {variance * 100:.2f}%)', 'value': i}
+            {
+                'label': f'Component #{i + 1} (var: {variance * 100:.2f}%)',
+                'value': i
+            }
             for i, variance in enumerate(pca.explained_variance_ratio_)
         ]
 
         return (
             component_options,  # Output for x-component-dropdown
-            component_options,  # Output for z-component-dropdown
-            component_options   # Output for y-component-dropdown
+            component_options,  # Output for y-component-dropdown
+            component_options   # Output for z-component-dropdown
         )
 
     @app.callback([
@@ -319,7 +322,8 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
         Input('z-component-dropdown', 'value'),
         Input('use-z-component', 'value')])
     def components_changed(index: int, x_component: int, y_component: int,
-                           z_component: int, use_z_component: List[str]) -> dash.Figure:
+                           z_component: int, use_z_component_values: list) \
+            -> Tuple[dash.Figure, str]:
         """Triggered when the PCA components are changed.
         Return the updated word embedding graph.
 
@@ -328,13 +332,15 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
             x_component: The zero-based index of the PCA component to use for the X-axis.
             z_component: The zero-based index of the PCA component to use for the Y-axis.
             z_component: The zero-based index of the PCA component to use for the Z-axis.
-            use_z_component: Whether to use the chosen Z-component.
+            use_z_component_values: A list of values for the use_z_component
+                checklist. Since this checklist contains a single element,
+                the list is empty when the checklist is not toggled.
         """
         embeddings = embeddings_list[index]
         pca, weights = embeddings.pca()
         # Select the components
         components = [x_component, y_component]
-        if use_z_component:
+        if use_z_component_values:
             components.append(z_component)
 
         weights = np.take(weights, components, axis=-1)
@@ -360,6 +366,20 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
             embedding_graph,
             f'Total variance described {total_variance * 100:.2f}%.'
         )
+
+    @app.callback(
+        Output('z-component-dropdown', 'disabled'),
+        Input('use-z-component', 'value'))
+    def toggle_use_z_component(use_z_component_values: list) -> bool:
+        """
+        Trigged when the use-z-component checklist is toggled.
+
+        Args:
+            use_z_component_values: A list of values for the use_z_component
+                checklist. Since this checklist contains a single element,
+                the list is empty when the checklist is not toggled.
+        """
+        return not bool(use_z_component_values)
 
     return app
 
