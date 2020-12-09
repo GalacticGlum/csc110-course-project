@@ -259,6 +259,7 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
                         clearable=False,
                         value=0
                     ),
+                    html.Div(id='metadata-div'),
                     html.Br(),
                     dcc.Checklist(id='spherize-data',
                         options=[{'label': 'Spherize data', 'value': 'yes'}],
@@ -297,6 +298,7 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
         Output('x-component-dropdown', 'options'),
         Output('y-component-dropdown', 'options'),
         Output('z-component-dropdown', 'options'),
+        Output('metadata-div', 'children'),
         Output('signal', 'children')],
         [Input('embeddings-dropdown', 'value'),
         Input('spherize-data', 'value')])
@@ -323,10 +325,17 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
             for i, variance in enumerate(pca.explained_variance_ratio_)
         ]
 
+        metadata_div = [
+            html.Br(),
+            html.Label(f'Points: {len(embeddings.weights)}'),
+            html.Label(f'Dimensions: {embeddings.weights.shape[-1]}')
+        ]
+
         return (
             component_options,  # Output for x-component-dropdown
             component_options,  # Output for y-component-dropdown
             component_options,  # Output for z-component-dropdown,
+            metadata_div,       # Output for metadata-div
             # We output a dummy value for the signal, but that is unique
             # (so that any callback that uses this signal is trigged).
             str(uuid.uuid4()),  # Output for the signal div.
