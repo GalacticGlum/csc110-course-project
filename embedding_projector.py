@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 import heapq
 import argparse
 from typing import (
@@ -238,9 +239,13 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
 
     app.layout = html.Div(children=[
         html.H1(children='Embedding Projector'),
-        # We use a hidden div to run callbacks with no output element.
-        # For example, when we want to do some data processing (such as computing the PCA).
-        html.Div(id='hidden-div', style={'display': 'none'}),
+        # We use a hidden div to faciliate callbacks.
+        # This 'signal' can be used both ways: to trigger a callback, or to have a callback
+        # return nothing.
+        #
+        # For example, when we want to do some data processing (such as computing the PCA)
+        # but may not necessarily want to render anything new.
+        html.Div(id='signal', style={'display': 'none'}),
         html.Div([
             html.Div([
                 html.Div([
@@ -254,6 +259,11 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
                         clearable=False,
                         value=0
                     ),
+                    html.Br(),
+                    dcc.Checklist(id='spherize-data',
+                        options=[{'label': 'Spherize data', 'value': 'yes'}],
+                        value=['yes']
+                    )
                 ]),
                 html.Div([
                     html.H3('PCA', style={'font-weight': 'bold'}),
@@ -286,18 +296,24 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
     @app.callback([
         Output('x-component-dropdown', 'options'),
         Output('y-component-dropdown', 'options'),
-        Output('z-component-dropdown', 'options')],
-        Input('embeddings-dropdown', 'value'))
-    def embeddings_changed(index: int) -> Tuple[List[dict], List[dict], List[dict]]:
+        Output('z-component-dropdown', 'options'),
+        Output('signal', 'children')],
+        [Input('embeddings-dropdown', 'value'),
+        Input('spherize-data', 'value')])
+    def embeddings_changed(index: int, spherize_data_values: list) \
+            -> Tuple[List[dict], List[dict], List[dict], str]:
         """Triggered when the selected embedding changes.
-        This function recomputes the PCA.
+        This function recomputes the PCA, and triggers the components_changed callback.
 
         Args:
             index: The index of the currently selected embeddings.
+            spherize_data_values: A list of values for the spherize_data checklist.
+                Since this checklist contains a single element, the list is empty
+                when the checklist is not toggled, and can be treated like a bool.
         """
         # Get embeddings
         embeddings = embeddings_list[index]
-        pca, _ = embeddings.pca(force_rebuild=True)
+        pca, _ = embeddings.pca(spherize=bool(spherize_data_values), force_rebuild=True)
 
         component_options = [
             {
@@ -310,7 +326,10 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
         return (
             component_options,  # Output for x-component-dropdown
             component_options,  # Output for y-component-dropdown
-            component_options   # Output for z-component-dropdown
+            component_options,  # Output for z-component-dropdown,
+            # We output a dummy value for the signal, but that is unique
+            # (so that any callback that uses this signal is trigged).
+            str(uuid.uuid4()),  # Output for the signal div.
         )
 
     @app.callback([
@@ -320,9 +339,10 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
         Input('x-component-dropdown', 'value'),
         Input('y-component-dropdown', 'value'),
         Input('z-component-dropdown', 'value'),
-        Input('use-z-component', 'value')])
+        Input('use-z-component', 'value'),
+        Input('signal', 'children')])
     def components_changed(index: int, x_component: int, y_component: int,
-                           z_component: int, use_z_component_values: list) \
+                           z_component: int, use_z_component_values: list, signal: object) \
             -> Tuple[dash.Figure, str]:
         """Triggered when the PCA components are changed.
         Return the updated word embedding graph.
