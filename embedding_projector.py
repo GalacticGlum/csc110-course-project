@@ -139,35 +139,40 @@ class WordEmbeddings:
         embeddings = np.load(weights_filepath)
         return cls(embeddings, words)
 
+import dash
+import dash_core_components as dcc
+import dash_html_components as html
+import plotly.express as px
+import pandas as pd
 
-import signal
-from tornado.ioloop import IOLoop
+def make_app() -> dash.Dash:
+    external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
+    app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
-from bokeh.layouts import column
-from bokeh.models import ColumnDataSource, Slider
-from bokeh.plotting import figure
-from bokeh.server.server import Server
-from bokeh.themes import Theme
-from bokeh.sampledata.sea_surface_temperature import sea_surface_temperature
+    # assume you have a "long-form" data frame
+    # see https://plotly.com/python/px-arguments/ for more options
+    df = pd.DataFrame({
+        "Fruit": ["Apples", "Oranges", "Bananas", "Apples", "Oranges", "Bananas"],
+        "Amount": [4, 1, 2, 2, 4, 5],
+        "City": ["SF", "SF", "SF", "Montreal", "Montreal", "Montreal"]
+    })
 
-def _render(doc):
-    df = sea_surface_temperature.copy()
-    source = ColumnDataSource(data=df)
-    plot = figure(x_axis_type='datetime', y_range=(0, 25), y_axis_label='Temperature (Celsius)',
-                  title="Sea Surface Temperature at 43.18, -70.43")
-    plot.line('time', 'temperature', source=source)
+    fig = px.bar(df, x="Fruit", y="Amount", color="City", barmode="group")
 
-    def callback(attr, old, new):
-        if new == 0:
-            data = df
-        else:
-            data = df.rolling('{0}D'.format(new)).mean()
-        source.data = dict(ColumnDataSource(data=data).data)
+    app.layout = html.Div(children=[
+        html.H1(children='Hello Dash'),
 
-    slider = Slider(start=0, end=30, value=0, step=1, title="Smoothing by N Days")
-    slider.on_change('value', callback)
+        html.Div(children='''
+            Dash: A web application framework for Python.
+        '''),
 
-    doc.add_root(column(slider, plot))
+        dcc.Graph(
+            id='example-graph',
+            figure=fig
+        )
+    ])
+
+    return app
 
 
 def main(args: argparse.Namespace) -> None:
@@ -179,23 +184,8 @@ def main(args: argparse.Namespace) -> None:
         logger.error('One of --checkpoints / (--weights-filepath and --vocab-filepath) is required!')
         exit(1)
 
-    # Make server object
-    server = Server({'/': _render}, port=args.port)
-    def _handle_interrupt(signum, frame):
-        """Handle a interrupt signal."""
-        def _stop_server():
-            """Stop the server."""
-            logger.warning('Stopping the server!')
-            IOLoop.instance().stop()
-        # Add the stop server callback
-        IOLoop.instance().add_callback_from_signal(_stop_server)
-
-    # Add interrupt signal handling
-    signal.signal(signal.SIGINT, _handle_interrupt)
-
-    server.start()
-    server.io_loop.add_callback(server.show, '/')
-    server.io_loop.start()
+    app = make_app()
+    app.run_server(debug=args.debug, port=args.port)
 
 
 if __name__ == '__main__':
@@ -212,5 +202,7 @@ if __name__ == '__main__':
                              'Use this instead of specifying the checkpoint directory.')
     parser.add_argument('--port', type=int, default=5006,
                         help='The port to open the server on. Defaults to 5006.')
+    parser.add_argument('--debug', action='store_true', dest='debug',
+                        help='Whether to run the app in debug mode.')
     parser.add_argument
     main(parser.parse_args())
