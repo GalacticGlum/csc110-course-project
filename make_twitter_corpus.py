@@ -17,6 +17,7 @@ import argparse
 from pathlib import Path
 from typing import Optional, List, IO
 
+import contractions
 from tqdm import tqdm
 from logger import logger
 from utils import parallel_map
@@ -30,6 +31,14 @@ URL_MATCH_PATTERN = re.compile(
     r'www\.[a-zA-Z0-9]+\.[^\s]{2,})'
 )
 
+# A regex pattern to find twitter handles.
+TWITTER_HANDLE_PATTERN = re.compile(r'@[^\s]+')
+
+# A regex pattern for finding repeated characters.
+REPEATED_CHARACTER_PATTERN = re.compile(r'((.)\2{2})\2+')
+
+# A regex pattern to find hypenated words.
+HYPENATED_WORDS_PATTERN = re.compile(r'(\w+)(-)(\w+)')
 
 def get_tweet_texts(filepath: Path,
                     remove_newlines: Optional[bool] = True,
@@ -37,7 +46,11 @@ def get_tweet_texts(filepath: Path,
                     strip_tweet_text: Optional[bool] = True,
                     ignore_truncated_tweets: Optional[bool] = False,
                     remove_links: Optional[bool] = True,
-                    special_phrase_pattern: Optional[str] = None) \
+                    special_phrase_pattern: Optional[str] = None,
+                    strip_handles: Optional[bool] = True,
+                    reduce_lens: Optional[bool] = True,
+                    fix_contractions: Optional[bool] = True,
+                    replace_hyphenated_words: Optional[bool] = True) \
         -> List[str]:
     """Return a list of tweet texts from a JSON file.
 
@@ -50,6 +63,13 @@ def get_tweet_texts(filepath: Path,
         ignore_truncated_tweets: Whether to ignore truncated tweets.
         remove_links: Whether to remove links.
         special_phrase_pattern: Regex pattern to match special phrases.
+        strip_handles: Whether to remove Twitter handles.
+        reduce_lens: Whether to truncate 3 or more repeated characters.
+            For example, "daaaaavid" becomes "daaavid".
+        fix_contractions: Whether to expand contractions.
+            For example, "I'm going." becomes "I am going."
+        replace_hypenated_words: Whether to replace hypenated words with an underscore.
+            For example, "global-warming" becomes "global_warming".
     """
     texts = []
     with open(filepath) as file:
@@ -64,21 +84,44 @@ def get_tweet_texts(filepath: Path,
                 continue
 
             text = tweet['text']
+            # Remove newlines
             if remove_newlines:
                 # Replace newlines with spaces
                 text = text.replace('\n', ' ').replace('\r', '')
 
+            # Remove unicode
             if remove_unicode:
                 text = str(text.encode('utf-8').decode('ascii', 'ignore'))
 
+            # Remove links
             if remove_links:
                 text = re.sub(URL_MATCH_PATTERN, '', text)
 
+            # Replace special phrases
             if special_phrase_pattern is not None:
                 for match in re.finditer(special_phrase_pattern, text):
                     i, j = match.span()
                     # Replace spaces in the special phrases with underscores.
                     text = text[:i] + text[i:j].replace(' ', '_') + text[j:]
+
+            # Remove twitter handles
+            if strip_handles:
+                text = re.sub(TWITTER_HANDLE_PATTERN, '', text)
+
+            # Truncate 3 or more repeated characters
+            #
+            # Replace the match with the contents of match group 1
+            # which consists of the character repeated exactly 3 times.
+            if reduce_lens:
+                text = re.sub(REPEATED_CHARACTER_PATTERN, r'\1', text)
+
+            # Expand contractions
+            if fix_contractions:
+                text = contractions.fix(text)
+
+            # Replace hypenated words
+            if replace_hyphenated_words:
+                text = re.sub(HYPENATED_WORDS_PATTERN, r'\1_\3', text)
 
             if strip_tweet_text:
                 text = text.strip()

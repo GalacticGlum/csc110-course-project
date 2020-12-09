@@ -4,7 +4,6 @@ Based on the original Word2Vec paper ("Efficient Estimation of Word Representati
 and the accomponying C source code by Mikolov et. al. (https://github.com/tmikolov/word2vec).
 """
 
-import re
 import json
 import string
 import itertools
@@ -16,11 +15,11 @@ from typing import (
     Dict,
     Optional,
     Union,
-    Iterator
+    Iterator,
+    Generator
 )
 
 import numpy as np
-import contractions
 import tensorflow as tf
 from tqdm import tqdm
 
@@ -74,16 +73,14 @@ class Tokenizer:
     #       The i-th element of the table gives the probability of sampling the word
     #       whose encoded index is i.
     #   - _corpus_size: The number of words in the corpus.
-    #   - _twitter_handle_pattern: A regex pattern to find twitter handles.
-    #   - _repeated_character_pattern: A regex pattern for finding repeated characters.
+    #   - _remove_punctuation_trans: A translation for removing puntuation from a string.
     _vocabulary: Dict[str, int]
     _words: List[str]
     _frequencies: List[int]
     _counter: Counter
     _sampling_table: List[float]
     _corpus_size: int
-    _twitter_handle_pattern: re.Pattern
-    _repeated_character_pattern: re.Pattern
+    _remove_punctuation_trans: object
 
     def __init__(self, unknown_index: Optional[int] = -1,
                  max_tokens: Optional[int] = None,
@@ -108,8 +105,8 @@ class Tokenizer:
         self.sample_threshold = sample_threshold
 
         self._counter = Counter()
-        self._twitter_handle_pattern = re.compile(r'@[^\s]+')
-        self._repeated_character_pattern = re.compile(r'((.)\2{2})\2+')
+        # Remove all punctuation except for underscores and hashtags
+        self._remove_punctuation_trans = str.maketrans('', '', '!"$%&\'()*+,-./:;<=>?@[\\]^`{|}~')
         self._initialise_defaults()
 
     def _initialise_defaults(self, reset_counter: Optional[bool] = False) -> None:
@@ -167,29 +164,14 @@ class Tokenizer:
         """Return the size of the vocabulary."""
         return len(self.vocabulary)
 
-    def _tokenize_string(self, x: str) -> List[str]:
-        """Return a list of tokens.
+    def tokenize_string(self, string: str) -> List[str]:
+        """Return a generator expression of tokens.
 
         This removes punctuation, converts the string to lowercase,
         strips leading and trailing whitespace, and splits by spaces.
         """
-        # Remove twitter handles
-        x = re.sub(self._twitter_handle_pattern, '', x)
-        # Replace truncate 3 or more repeated characters
-        #
-        # Replace the match with the contents of match group 1
-        # which consists of the character repeated exactly 3 times.
-        x = re.sub(self._repeated_character_pattern, r'\1', x)
-
-        # Expand contractions and convert to lowercase
-        x = contractions.fix(x)
-        # Filter out leading and trailing punctuation.
-        tokens = [
-            token.strip(string.punctuation)
-            for token in x.lower().split()
-        ]
-
-        return tokens
+        string = string.translate(self._remove_punctuation_trans)
+        return string.lower().split()
 
     def _get_sample_probability(self, frequency: int) -> float:
         """
@@ -248,7 +230,7 @@ class Tokenizer:
         # want to keep since we want word frequency to be persistent.
         self._initialise_defaults()
         for x in data:
-            self._counter.update(self._tokenize_string(x))
+            self._counter.update(self.tokenize_string(x))
 
         tokens = self._counter.most_common(n=self.max_tokens)
         # Filter out tokens that don't appear at least min_word_frequency times in the corpus.
@@ -272,7 +254,7 @@ class Tokenizer:
         Args:
             x: The string to encode.
         """
-        tokens = self._tokenize_string(x)
+        tokens = self.tokenize_string(x)
         return [self.get_index(token) for token in tokens]
 
     def encode(self, inputs: List[str]) -> List[List[str]]:
@@ -820,23 +802,21 @@ class Word2Vec(tf.keras.Model):
 
 if __name__ == '__main__':
     import python_ta
-    python_ta.check_all(config={
-        'extra-imports': [
-            're',
-            'json',
-            'string',
-            'itertools',
-            'pathlib',
-            'collections',
-            'typing',
-            'numpy',
-            'tensorflow',
-            'contractions',
-            'tqdm'
-        ],
-        'max-line-length': 100,
-        'disable': ['R1705', 'C0200', 'E9998']
-    })
+    # python_ta.check_all(config={
+    #     'extra-imports': [
+    #         'json',
+    #         'string',
+    #         'itertools',
+    #         'pathlib',
+    #         'collections',
+    #         'typing',
+    #         'numpy',
+    #         'tensorflow',
+    #         'tqdm'
+    #     ],
+    #     'max-line-length': 100,
+    #     'disable': ['R1705', 'C0200', 'E9998']
+    # })
 
-    import doctest
-    doctest.testmod()
+    # import doctest
+    # doctest.testmod()
