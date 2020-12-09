@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import heapq
-import tempfile
 import argparse
 from typing import (
     Optional,
@@ -44,7 +43,11 @@ class WordEmbeddings:
     """
     # Private Instance Attributes:
     #   - _vocabulary: A dictionary mapping a word to its index.
+    #   - _pca: Fitted sklearn PCA object.
+    #   - _reduced_weights: Word embeddings reduced to a lower dimensional space.
     _vocabulary: Dict[str, int]
+    _pca: decomposition.PCA
+    _reduced_weights: np.ndarray
 
     def __init__(self, weights_filepath: Path, vocab_filepath: Path,
                  name_metadata: Optional[str] = None) -> None:
@@ -65,6 +68,8 @@ class WordEmbeddings:
         self.weights = np.load(weights_filepath)
         self.name_metadata = name_metadata
         self._vocabulary = {word: i for i, word in enumerate(self.words)}
+        self._pca = None
+        self._reduced_weights = None
 
     def most_similar(self, word: Optional[str] = None, k: Optional[int] = None,
                      similarity_func: Optional[callable] = None,
@@ -127,12 +132,42 @@ class WordEmbeddings:
         """Return the embedding vector for the given word."""
         return self.weights[self._vocabulary[word]]
 
+    def pca(self, spherize: Optional[bool] = True, top_k_components: Optional[int] = 10,
+            force_rebuild: Optional[bool] = False) -> Tuple[decomposition.PCA, np.ndarray]:
+        """Get/build the PCA for this word embedding vector space.
+        Return the sklearn.decomposition.PCA instance, and the lower-dimension weights.
+
+        Args:
+            spherize: Whether to spherize the data. This shifts the data by the centroid,
+                and normalizes embeddings to have unit norms.
+            top_k_components: Number of components to reduce the vector space to.
+            force_rebuild: Whether to rebuild the PCA if it has already been computed.
+        """
+        # If we force_rebuild is False and we have already computed the PCA,
+        # then we don't need to do anything.
+        if self._pca is not None and self._reduced_weights is not None and not force_rebuild:
+            return self._pca, self._reduced_weights
+
+        if spherize:
+            # Shift each point by the centroid
+            centroid = np.mean(self.weights, axis=0)
+            weights = self.weights - centroid
+            # Normalize data to unit norms
+            weights = weights / np.linalg.norm(weights, axis=-1, keepdims=True)
+        else:
+            weights = self.weights
+
+        self._pca = decomposition.PCA(n_components=top_k_components)
+        self._pca.fit(weights)
+        self._reduced_weights = self._pca.transform(weights)
+        return self._pca, self._reduced_weights
+
     def __getitem__(self, word: str) -> np.ndarray:
         """Return the embedding vector for the given word."""
         return self.get_vector(word)
 
     def __str__(self) -> str:
-        """Return a string representation of this vector space."""
+        """Return a string representation of this word embedding vector space."""
         if self.name_metadata is None:
             return super().__str__()
         return self.name_metadata
@@ -145,19 +180,18 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output
-from flask_caching import Cache
 
 
-def _make_embedding_scatter3d(weights: np.ndarray, words: List[str]) -> go.Figure:
+def _make_embedding_scatter3d(x: np.ndarray, y: np.ndarray, z: np.ndarray, words: List[str]) \
+        -> go.Figure:
     """Make a 3D scatter plot given the embedding weight data.
 
     Args:
-        weights: 3-dimensional matrix of data containing the embeddings.
+        x: A numpy array containing the x-coordinates.
+        y: A numpy array containing the y-coordinates.
+        z: A numpy array containing the z-coordinates.
         words: A list of strings containing the words of the model vocabulary.
     """
-    # Split the matrix into separate vectors containing components
-    x, y, z = np.squeeze(np.split(weights, [1, 2], axis=1))
-
     # Create the figure for displaying the embedding points
     embedding_fig = px.scatter_3d(
         x=x, y=y, z=z,
@@ -182,32 +216,17 @@ def _make_embedding_scatter3d(weights: np.ndarray, words: List[str]) -> go.Figur
     return embedding_fig
 
 
-def _make_app(embeddings_list: List[WordEmbeddings], cache_directory: Optional[Path] = None) \
-        -> dash.Dash:
+def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
     """Make the Dash app for the embedding projector.
 
     Args:
         embeddings_list: A list of word embeddings.
-        cache_directory: The directory to save cached data.
-            If unspecified, defaults to the OS temp directory.
 
     Preconditions:
         - len(embeddings_list) > 0
     """
     external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
     app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
-
-    # Create cache
-    cache = Cache()
-
-    if cache_directory is None:
-        # Default to the OS temporary directory
-        cache_directory = Path(tempfile.gettempdir()) / 'embedding_projector'
-
-    cache.init_app(app.server, config={
-        'CACHE_TYPE': 'filesystem',
-        'CACHE_DIR': str(cache_directory.absolute())
-    })
 
     app.layout = html.Div(children=[
         html.H1(children='Embedding Projector'),
@@ -255,7 +274,6 @@ def _make_app(embeddings_list: List[WordEmbeddings], cache_directory: Optional[P
     ])
 
     @app.callback([
-        Output('embedding-graph', 'children'),
         Output('x-component-dropdown', 'options'),
         Output('y-component-dropdown', 'options'),
         Output('z-component-dropdown', 'options')],
@@ -263,33 +281,7 @@ def _make_app(embeddings_list: List[WordEmbeddings], cache_directory: Optional[P
     def embeddings_changed(index):
         # Get embeddings
         embeddings = embeddings_list[index]
-        if cache.get('index') != index:
-            logger.info('Spherizing data')
-            # Shift each point by the centroid
-            centroid = np.mean(embeddings.weights, axis=0)
-            weights = embeddings.weights - centroid
-            # Normalize data to unit vectors
-            weights = weights / np.linalg.norm(weights, axis=-1, keepdims=True)
-
-            logger.info('Computing PCA...')
-            pca = decomposition.PCA(n_components=3)
-            pca.fit(weights)
-            reduced_embeddings = pca.transform(weights)
-
-            # Save in the cache
-            cache.set('pca', pca)
-            cache.set('reduced_embeddings', reduced_embeddings)
-            cache.set('index', index)
-        else:
-            pca = cache.get('pca')
-            reduced_embeddings = cache.get('reduced_embeddings')
-
-        # Update the embedding graph
-        scatter = _make_embedding_scatter3d(reduced_embeddings, embeddings.words)
-        embedding_graph = dcc.Graph(id='embedding-graph',
-            figure=scatter,
-            style={'height': '100vh'}
-        )
+        pca, _ = embeddings.pca()
 
         component_options = [
             {'label': f'Component #{i + 1} (var: {variance * 100:.2f}%)', 'value': i}
@@ -297,21 +289,52 @@ def _make_app(embeddings_list: List[WordEmbeddings], cache_directory: Optional[P
         ]
 
         return (
-            embedding_graph,    # Output for embedding-graph
             component_options,  # Output for x-component-dropdown
             component_options,  # Output for z-component-dropdown
             component_options   # Output for y-component-dropdown
         )
+
+    @app.callback(
+        Output('embedding-graph', 'children'),
+        [Input('embeddings-dropdown', 'value'),
+        Input('x-component-dropdown', 'value'),
+        Input('y-component-dropdown', 'value'),
+        Input('z-component-dropdown', 'value')])
+    def components_changed(index: int, x_component: int, y_component: int, z_component: int) \
+            -> dash.Figure:
+        """Triggered when the PCA components are changed.
+        Return the updated word embedding graph.
+
+        Args:
+            index: The index of the currently selected embeddings.
+            x_component: The zero-based index of the PCA component to use for the X-axis.
+            z_component: The zero-based index of the PCA component to use for the Y-axis.
+            z_component: The zero-based index of the PCA component to use for the Z-axis.
+        """
+        embeddings = embeddings_list[index]
+        _, weights = embeddings.pca()
+        # Select the components
+        weights = np.take(weights, [x_component, y_component, z_component], axis=-1)
+        # Split the matrix into separate vectors containing components
+        x, y, z = np.squeeze(np.split(weights, [1, 2], axis=1))
+        # Update the embedding graph
+        scatter = _make_embedding_scatter3d(x, y, z, embeddings.words)
+        embedding_graph = dcc.Graph(
+            figure=scatter,
+            style={'height': '100vh'}
+        )
+
+        return embedding_graph
+
 
     return app
 
 
 def embedding_projector(embeddings_list: List[WordEmbeddings],
                         debug: Optional[bool] = False,
-                        port: Optional[int] = 5006,
-                        cache_directory: Optional[Path] = None) -> None:
+                        port: Optional[int] = 5006) -> None:
     """Start the embedding projector given word embeddings."""
-    app = _make_app(embeddings_list, cache_directory=cache_directory)
+    app = _make_app(embeddings_list)
     app.run_server(debug=debug, port=port)
 
 
@@ -337,12 +360,7 @@ def main(args: argparse.Namespace) -> None:
     )
 
     # Start the embedding projector
-    embedding_projector(
-        [embeddings],
-        debug=args.debug,
-        port=args.port,
-        cache_directory=args.cache_directory
-    )
+    embedding_projector([embeddings], debug=args.debug, port=args.port)
 
 
 if __name__ == '__main__':
@@ -361,7 +379,5 @@ if __name__ == '__main__':
                         help='The port to open the server on. Defaults to 5006.')
     parser.add_argument('--debug', action='store_true', dest='debug',
                         help='Whether to run the app in debug mode.')
-    parser.add_argument('--cache-dir', dest='cache_directory', type=Path, default=None,
-                        help='The directory to save cached data. Defaults to the OS temp dir.')
     parser.add_argument
     main(parser.parse_args())
