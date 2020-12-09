@@ -288,10 +288,16 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
         Output('y-component-dropdown', 'options'),
         Output('z-component-dropdown', 'options')],
         [Input('embeddings-dropdown', 'value')])
-    def embeddings_changed(index):
+    def embeddings_changed(index: int):
+        """Triggered when the selected embedding changes.
+        This function recomputes the PCA.
+
+        Args:
+            index: The index of the currently selected embeddings.
+        """
         # Get embeddings
         embeddings = embeddings_list[index]
-        pca, _ = embeddings.pca()
+        pca, _ = embeddings.pca(force_rebuild=True)
 
         component_options = [
             {'label': f'Component #{i + 1} (var: {variance * 100:.2f}%)', 'value': i}
