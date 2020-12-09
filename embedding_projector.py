@@ -182,36 +182,44 @@ import dash_html_components as html
 from dash.dependencies import Input, Output
 
 
-def _make_embedding_scatter3d(x: np.ndarray, y: np.ndarray, z: np.ndarray, words: List[str]) \
-        -> go.Figure:
-    """Make a 3D scatter plot given the embedding weight data.
+def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray, \
+                            z: Optional[np.ndarray] = None) -> go.Figure:
+    """Make a scatter plot given the embedding weight data.
+    Return a 3D scatter plot if three dimensions were given, or a 2D scatter plot otherwise.
 
     Args:
+        words: A list of strings containing the words of the model vocabulary.
         x: A numpy array containing the x-coordinates.
         y: A numpy array containing the y-coordinates.
         z: A numpy array containing the z-coordinates.
-        words: A list of strings containing the words of the model vocabulary.
     """
     # Create the figure for displaying the embedding points
-    embedding_fig = px.scatter_3d(
-        x=x, y=y, z=z,
-        hover_name=words,
-        opacity=0.5
-    )
+    if z is not None:
+        embedding_fig = px.scatter_3d(
+            x=x, y=y, z=z,
+            hover_name=words,
+            opacity=0.5
+        )
 
-    # Update the axis settings
-    axis_values = {
-        'backgroundcolor': 'white',
-        'gridcolor': '#D9D9D9'
-    }
-    embedding_fig.update_layout(
-        scene={
-            'xaxis': axis_values,
-            'yaxis': axis_values,
-            'zaxis': axis_values,
-            'aspectmode': 'cube'
+        # Update the axis settings
+        axis_values = {
+            'backgroundcolor': 'white',
+            'gridcolor': '#D9D9D9'
         }
-    )
+        embedding_fig.update_layout(
+            scene={
+                'xaxis': axis_values,
+                'yaxis': axis_values,
+                'zaxis': axis_values,
+                'aspectmode': 'cube'
+            }
+        )
+    else:
+        embedding_fig = px.scatter(
+            x=x, y=y,
+            hover_name=words,
+            opacity=0.5
+        )
 
     return embedding_fig
 
@@ -255,13 +263,15 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
                     dcc.Dropdown(id='y-component-dropdown', value=1),
                     html.Div([
                         html.Label('Z', className='ten columns'),
-                        dcc.Checklist(
-                            options=[{'label': '', 'value': 'use_z_component'}],
-                            value=['use_z_component'],
+                        dcc.Checklist(id='use-z-component',
+                            options=[{'label': '', 'value': 'yes'}],
+                            value=['yes'],
                             className='two columns'
                         )
                     ], className='row'),
-                    dcc.Dropdown(id='z-component-dropdown', value=2)
+                    dcc.Dropdown(id='z-component-dropdown', value=2),
+                    html.Br(),
+                    html.Label(id='pca-variance-label')
                 ])
             ], className='two columns'),
             html.Div([
@@ -294,14 +304,16 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
             component_options   # Output for y-component-dropdown
         )
 
-    @app.callback(
+    @app.callback([
         Output('embedding-graph', 'children'),
+        Output('pca-variance-label', 'children')],
         [Input('embeddings-dropdown', 'value'),
         Input('x-component-dropdown', 'value'),
         Input('y-component-dropdown', 'value'),
-        Input('z-component-dropdown', 'value')])
-    def components_changed(index: int, x_component: int, y_component: int, z_component: int) \
-            -> dash.Figure:
+        Input('z-component-dropdown', 'value'),
+        Input('use-z-component', 'value')])
+    def components_changed(index: int, x_component: int, y_component: int,
+                           z_component: int, use_z_component: List[str]) -> dash.Figure:
         """Triggered when the PCA components are changed.
         Return the updated word embedding graph.
 
@@ -310,22 +322,38 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
             x_component: The zero-based index of the PCA component to use for the X-axis.
             z_component: The zero-based index of the PCA component to use for the Y-axis.
             z_component: The zero-based index of the PCA component to use for the Z-axis.
+            use_z_component: Whether to use the chosen Z-component.
         """
         embeddings = embeddings_list[index]
-        _, weights = embeddings.pca()
+        pca, weights = embeddings.pca()
         # Select the components
-        weights = np.take(weights, [x_component, y_component, z_component], axis=-1)
+        components = [x_component, y_component]
+        if use_z_component:
+            components.append(z_component)
+
+        weights = np.take(weights, components, axis=-1)
+
+        # The indices where we want to split the weights matrix.
+        # For example, if we have [1, 2, 3] and we want 3 vectors,
+        # we would split the array at indices 1 and 2.
+        split_indices = list(range(1, weights.shape[-1]))
         # Split the matrix into separate vectors containing components
-        x, y, z = np.squeeze(np.split(weights, [1, 2], axis=1))
+        axes = np.squeeze(np.split(weights, split_indices, axis=1))
         # Update the embedding graph
-        scatter = _make_embedding_scatter3d(x, y, z, embeddings.words)
+        scatter = _make_embedding_scatter(embeddings.words, *axes)
         embedding_graph = dcc.Graph(
             figure=scatter,
             style={'height': '100vh'}
         )
 
-        return embedding_graph
+        # Compute the total variance described the chosen components.
+        # This is the sum of the variance described by each component.
+        total_variance = np.sum(np.take(pca.explained_variance_ratio_, components))
 
+        return (
+            embedding_graph,
+            f'Total variance described {total_variance * 100:.2f}%.'
+        )
 
     return app
 
