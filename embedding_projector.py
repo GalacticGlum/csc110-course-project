@@ -195,16 +195,27 @@ def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray, \
     """
     # Create the figure for displaying the embedding points
     if z is not None:
-        embedding_fig = px.scatter_3d(
+        embedding_fig = go.Figure(data=[go.Scatter3d(
             x=x, y=y, z=z,
-            hover_name=words,
-            opacity=0.5
-        )
+            mode='markers',
+            marker={
+                'size': 4.5,
+                'opacity': 0.25,
+                'color': 'rgb(1, 135, 75)'
+            },
+            hovertemplate=
+            '<b>%{text}</b><br>' +
+            '<br>x: %{x}' +
+            '<br>y: %{y}' +
+            '<br>z: %{z}' +
+            '<extra></extra>',
+            text=words
+        )])
 
         # Update the axis settings
         axis_values = {
             'backgroundcolor': 'white',
-            'gridcolor': '#D9D9D9'
+            'gridcolor': 'rgb(217, 217, 217)'
         }
         embedding_fig.update_layout(
             scene={
@@ -212,6 +223,11 @@ def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray, \
                 'yaxis': axis_values,
                 'zaxis': axis_values,
                 'aspectmode': 'cube'
+            },
+            hoverlabel={
+                'bgcolor': 'white',
+                'font_size': 16,
+                'font_family': 'Arial'
             }
         )
     else:
@@ -223,23 +239,9 @@ def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray, \
 
     return embedding_fig
 
-
-def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
-    """Make the Dash app for the embedding projector.
-
-    Args:
-        embeddings_list: A list of word embeddings.
-
-    Preconditions:
-        - len(embeddings_list) > 0
-    """
-    external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-    app = dash.Dash(
-        __name__, external_stylesheets=external_stylesheets,
-        title='Embedding Projector'
-    )
-
-    app.layout = html.Div(children=[
+def _make_layout(embeddings_list: List[WordEmbeddings]) -> object:
+    """Create the layout for the embedding projector app."""
+    return html.Div(children=[
         html.H1(children='Embedding Projector'),
         # We use a hidden div to faciliate callbacks.
         # This 'signal' can be used both ways: to trigger a callback, or to have a callback
@@ -247,7 +249,8 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
         #
         # For example, when we want to do some data processing (such as computing the PCA)
         # but may not necessarily want to render anything new.
-        html.Div(id='signal', style={'display': 'none'}),
+        html.Div(id='update-embeddings-signal', style={'display': 'none'}),
+        html.Div(id='hidden-div', style={'display': 'none'}),
         html.Div([
             html.Div([
                 html.Div([
@@ -289,19 +292,25 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
             ], className='two columns'),
             html.Div([
                 dcc.Loading(id='embedding-graph-loading',
-                    children=[html.Div(id='embedding-graph')],
+                    children=[dcc.Graph(
+                        id='embedding-graph',
+                        style={'height': '100vh'}
+                    )],
                     type='default'
                 )
             ], className='ten columns')
         ], className='row'),
     ])
 
+
+def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> None:
+    """Make the callbacks for the embedding projector app."""
     @app.callback([
         Output('x-component-dropdown', 'options'),
         Output('y-component-dropdown', 'options'),
         Output('z-component-dropdown', 'options'),
         Output('metadata-div', 'children'),
-        Output('signal', 'children')],
+        Output('update-embeddings-signal', 'children')],
         [Input('embeddings-dropdown', 'value'),
         Input('spherize-data', 'value')])
     def embeddings_changed(index: int, spherize_data_values: list) \
@@ -344,14 +353,14 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
         )
 
     @app.callback([
-        Output('embedding-graph', 'children'),
+        Output('embedding-graph', 'figure'),
         Output('pca-variance-label', 'children')],
         [Input('embeddings-dropdown', 'value'),
         Input('x-component-dropdown', 'value'),
         Input('y-component-dropdown', 'value'),
         Input('z-component-dropdown', 'value'),
         Input('use-z-component', 'value'),
-        Input('signal', 'children')])
+        Input('update-embeddings-signal', 'children')])
     def components_changed(index: int, x_component: int, y_component: int,
                            z_component: int, use_z_component_values: list, signal: object) \
             -> Tuple[dash.Figure, str]:
@@ -384,26 +393,21 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
         axes = np.squeeze(np.split(weights, split_indices, axis=1))
         # Update the embedding graph
         scatter = _make_embedding_scatter(embeddings.words, *axes)
-        embedding_graph = dcc.Graph(
-            figure=scatter,
-            style={'height': '100vh'}
-        )
 
         # Compute the total variance described the chosen components.
         # This is the sum of the variance described by each component.
         total_variance = np.sum(np.take(pca.explained_variance_ratio_, components))
 
         return (
-            embedding_graph,
-            f'Total variance described {total_variance * 100:.2f}%.'
+            scatter,
+            f'Total variance described: {total_variance * 100:.2f}%.'
         )
 
     @app.callback(
         Output('z-component-dropdown', 'disabled'),
         Input('use-z-component', 'value'))
     def toggle_use_z_component(use_z_component_values: list) -> bool:
-        """
-        Trigged when the use-z-component checklist is toggled.
+        """Trigged when the use-z-component checklist is toggled.
 
         Args:
             use_z_component_values: A list of values for the use_z_component
@@ -411,6 +415,38 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
                 the list is empty when the checklist is not toggled.
         """
         return not bool(use_z_component_values)
+
+    @app.callback(
+        Output('hidden-div', 'children'),
+        Input('embedding-graph', 'hoverData'))
+    def on_hover_embedding_graph(hover_data: dict) -> None:
+        """Trigged when a point is hovered on the embedding graph.
+
+        Args:
+            hover_data: A dictionary containing the information of the points
+                the user is currently hover over.
+        """
+        pass
+
+
+def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
+    """Make the Dash app for the embedding projector.
+
+    Args:
+        embeddings_list: A list of word embeddings.
+
+    Preconditions:
+        - len(embeddings_list) > 0
+    """
+    external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
+    app = dash.Dash(
+        __name__, external_stylesheets=external_stylesheets,
+        title='Embedding Projector'
+    )
+
+    # Setup the app
+    app.layout = _make_layout(embeddings_list)
+    _make_callbacks(app, embeddings_list)
 
     return app
 
