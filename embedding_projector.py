@@ -234,7 +234,10 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
         - len(embeddings_list) > 0
     """
     external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-    app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+    app = dash.Dash(
+        __name__, external_stylesheets=external_stylesheets,
+        title='Embedding Projector'
+    )
 
     app.layout = html.Div(children=[
         html.H1(children='Embedding Projector'),
