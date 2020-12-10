@@ -715,7 +715,8 @@ class Word2Vec(tf.keras.Model):
 
     def train(self, dataset: tf.data.Dataset, logdir: Union[str, Path],
               initial_lr: Optional[float] = 0.025, target_lr: Optional[float] = 1e-4,
-              log_frequency: Optional[int] = 1000, show_progress_bar: Optional[bool] = True)\
+              log_frequency: Optional[int] = 1000, save_frequency: Optional[int] = 10000,
+              max_checkpoints: Optional[int] = 4, show_progress_bar: Optional[bool] = True)\
             -> None:
         """Train the model.
 
@@ -725,6 +726,9 @@ class Word2Vec(tf.keras.Model):
             initial_lr: The initial learning rate.
             target_lr: The target learning rate.
             log_frequency: The frequency at which to log stats, in global steps.
+            save_frequency: The frequency at which to save the model.
+            max_checkpoints: The maximum number of checkpoints to keep at a time.
+                If not positive, then there is no maximum on the number of saved checkpoints.
             show_progress_bar: Whether to show a progress bar while the jobs run.
         """
         # Create output directory
@@ -752,8 +756,6 @@ class Word2Vec(tf.keras.Model):
             Args:
                 inputs: Input features to the model (targets).
                 labels: Correct labels for the model (contexts).
-                model: The model to train.
-                optimizer: An optimizer instance.
             """
             loss = self.call(inputs, labels)
             # Compute gradients
@@ -775,6 +777,9 @@ class Word2Vec(tf.keras.Model):
             # Apply gradients for backprop
             optimizer.apply_gradients(zip(gradients, self.trainable_variables))
             return loss, learning_rate
+
+        checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=self)
+        manager = tf.train.CheckpointManager(checkpoint, directory=logdir, max_to_keep=max_checkpoints)
 
         average_loss = 0
         with tqdm(dataset, disable=not show_progress_bar) as progress_bar:
@@ -798,6 +803,9 @@ class Word2Vec(tf.keras.Model):
 
                     # Reset average loss
                     average_loss = 0
+
+                if global_step > 0 and global_step % save_frequency == 0:
+                    manager.save()
 
 
 if __name__ == '__main__':

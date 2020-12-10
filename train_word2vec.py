@@ -58,7 +58,10 @@ def main(args: argparse.Namespace) -> None:
     logdir = args.output_dir / get_next_run_id(args.output_dir, run_name)
 
     logger.info(f'Starting training (for {args.epochs} epochs).')
-    model.train(dataset, logdir, args.initial_lr, args.target_lr, args.log_freq)
+    model.train(
+        dataset, logdir, args.initial_lr, args.target_lr,
+        args.log_freq, args.save_freq
+    )
 
     # Save embeddings and vocab
     #
@@ -138,6 +141,9 @@ if __name__ == '__main__':
     parser.add_argument('--log-freq', type=int, default=1000,
                         help='The frequency at which to log stats, '
                              'in global steps. Defaults to 1000.')
+    parser.add_argument('--save-freq', type=int, default=10000,
+                        help='The frequency at which to save the model, '
+                             'in global steps. Defaults to 10000.')
     parser.add_argument('-s', '--seed', type=int, default=None,
                         help='Sets the seed of the random engine. '
                               'If unspecified, a random seed is chosen.')
