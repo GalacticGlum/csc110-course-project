@@ -343,18 +343,21 @@ def _make_layout(embeddings_list: List[WordEmbeddings]) -> object:
                     html.H3('ANALYSIS', style={'font-weight': 'bold'}),
                     dbc.Row([
                         dbc.Col([dbc.Button('Show All Data',
+                            id='show-all-data-button',
                             outline=True,
                             color='dark',
                             className='mr-2 my-4',
                             disabled=True
                         )]),
                         dbc.Col([dbc.Button('Isolate Points',
+                            id='isolate-points-button',
                             outline=True,
                             color='dark',
                             className='mr-2 my-4',
                             disabled=True
                         )]),
                         dbc.Col([dbc.Button('Clear Selection',
+                            id='clear-selection-button',
                             outline=True,
                             color='dark',
                             className='my-4',
@@ -510,6 +513,9 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         State('embeddings-dropdown', 'value'))
     def on_search_changed(search_term: str, index: int) -> Tuple[List[dbc.ListGroupItem], str]:
         """Triggered when the search box changes."""
+        # The number of search results to show.
+        SHOW_FIRST_N = 25
+
         if index is None or not search_term:
             return ([], '')
 
@@ -517,7 +523,7 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         search_results = embeddings.search_words(search_term)
 
         results = []
-        for word in search_results[:25]:
+        for word in search_results[:SHOW_FIRST_N]:
             # Create a new element for the result element, with the "search-result" type.
             # The element has a unique id so that the events don't clash.
             element_id = {
@@ -542,9 +548,21 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         )
 
     @app.callback(
+        Output('word-search-input', 'value'),
+        Input('clear-selection-button', 'n_clicks'))
+    def clear_search_selection(n_clicks: int) -> str:
+        """Triggered when the clear search selection button is clicked.
+
+        Args:
+            n_clicks: The number of times the button was clicked.
+        """
+        return ''
+
+    @app.callback(
         [Output('selected-word-tab', 'children'),
         Output('selected-word-tab', 'disabled'),
-        Output('analysis-tabs', 'active_tab')],
+        Output('analysis-tabs', 'active_tab'),
+        Output('clear-selection-button', 'disabled')],
         [Input('embedding-graph', 'clickData'),
         Input({'type': 'search-result', 'index': ALL, 'word': ALL}, 'n_clicks')],
         State('embeddings-dropdown', 'value'))
@@ -557,7 +575,7 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
             index: The index of the currently selected word embeddigns object.
         """
         # The default/empty return value.
-        DEFAULT = ([], True, 'search-tab')
+        DEFAULT = ([], True, 'search-tab', True)
 
         ctx = dash.callback_context
         # If the context is None, then we can't trace the event, so return.
@@ -636,7 +654,7 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
             )
         ])
 
-        return (tab_contents, False, 'selected-word-tab')
+        return (tab_contents, False, 'selected-word-tab', False)
 
 
 def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
