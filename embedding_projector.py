@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 import heapq
 import argparse
@@ -26,7 +27,7 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 import dash_bootstrap_components as dbc
-from dash.dependencies import Input, Output, State
+from dash.dependencies import Input, Output, State, MATCH, ALL
 
 
 def cosine_similarity(u: np.ndarray, v: np.ndarray) -> float:
@@ -349,14 +350,29 @@ def _make_layout(embeddings_list: List[WordEmbeddings]) -> object:
                             disabled=True
                         )])
                     ], no_gutters=True),
-                    dbc.Input(id='word-search-input',
-                        type='text',
-                        placeholder='Search'
-                    ),
-                    dbc.FormText(id='word-search-matches', color='secondary'),
-                    html.Div([
-                        dbc.ListGroup(id='word-search-results', className='pt-3')
-                    ], className='overflow-auto', style={'max-height': '50vh', 'height': '100%'})
+                    dbc.Tabs([
+                        dbc.Tab(tab_id='search-tab', children=[
+                            html.Div([
+                                dbc.Input(id='word-search-input',
+                                    type='text',
+                                    placeholder='Search'
+                                ),
+                                dbc.FormText(id='word-search-matches', color='secondary'),
+                                html.Div([
+                                    dbc.ListGroup(id='word-search-results', className='pt-3')
+                                ], className='overflow-auto', style={
+                                    'max-height': '50vh',
+                                    'height': '100%'
+                                })
+                            ], className='mt-3')
+                        ], label='Search'),
+                        dbc.Tab(
+                            id='selected-word-tab',
+                            tab_id='selected-word-tab',
+                            label='Selection',
+                            disabled=True
+                        )
+                    ], id='analysis-tabs', active_tab='search-tab')
                 ]),
             ]), width=2)
         ])
@@ -415,26 +431,26 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
     @app.callback([
         Output('embedding-graph', 'figure'),
         Output('pca-variance-label', 'children')],
-        [Input('embeddings-dropdown', 'value'),
-        Input('x-component-dropdown', 'value'),
+        [Input('x-component-dropdown', 'value'),
         Input('y-component-dropdown', 'value'),
         Input('z-component-dropdown', 'value'),
         Input('use-z-component', 'value'),
-        Input('update-embeddings-signal', 'children')])
-    def components_changed(index: int, x_component: int, y_component: int,
-                           z_component: int, use_z_component_values: list, signal: object) \
+        Input('update-embeddings-signal', 'children')],
+        State('embeddings-dropdown', 'value'))
+    def components_changed(x_component: int, y_component: int, z_component: int,
+                           use_z_component_values: list, signal: object, index: int) \
             -> Tuple[dash.Figure, str]:
         """Triggered when the PCA components are changed.
         Return the updated word embedding graph.
 
         Args:
-            index: The index of the currently selected embeddings.
             x_component: The zero-based index of the PCA component to use for the X-axis.
             z_component: The zero-based index of the PCA component to use for the Y-axis.
             z_component: The zero-based index of the PCA component to use for the Z-axis.
             use_z_component_values: A list of values for the use_z_component
                 checklist. Since this checklist contains a single element,
                 the list is empty when the checklist is not toggled.
+            index: The index of the currently selected embeddings.
         """
         embeddings = embeddings_list[index]
         pca, weights = embeddings.pca()
@@ -476,24 +492,24 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         """
         return not bool(use_z_component_values)
 
-    @app.callback(
-        Output('hidden-div', 'children'),
-        Input('embedding-graph', 'clickData'))
-    def on_click_embedding_graph(click_data: dict) -> None:
-        """Trigged when a point is clicked on the embedding graph.
+    # @app.callback(
+    #     Output('hidden-div', 'children'),
+    #     Input('embedding-graph', 'clickData'))
+    # def on_click_embedding_graph(click_data: dict) -> None:
+    #     """Trigged when a point is clicked on the embedding graph.
 
-        Args:
-            click_data: A dictionary containing the information of the points
-                the user is clicked on.
-        """
-        # print(click_data)
+    #     Args:
+    #         click_data: A dictionary containing the information of the points
+    #             the user is clicked on.
+    #     """
+    #     # print(click_data)
 
     @app.callback([
         Output('word-search-results', 'children'),
         Output('word-search-matches', 'children')],
-        [Input('embeddings-dropdown', 'value'),
-        Input('word-search-input', 'value')])
-    def on_search_changed(index: int, search_term: str) -> Tuple[List[dbc.ListGroupItem], str]:
+        Input('word-search-input', 'value'),
+        State('embeddings-dropdown', 'value'))
+    def on_search_changed(search_term: str, index: int) -> Tuple[List[dbc.ListGroupItem], str]:
         """Triggered when the search box changes."""
         if index is None or not search_term:
             return ([], '')
@@ -503,12 +519,54 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
 
         results = []
         for word in search_results[:25]:
-            results.append(dbc.ListGroupItem(word))
+            # Create a new element for the result element, with the "search-result" type.
+            # The element has a unique id so that the events don't clash.
+            element_id = {
+                'type': 'search-result',
+                'index': str(uuid.uuid4()),
+                'word': word
+            }
+
+            # Create the list group item element
+            results.append(dbc.ListGroupItem(
+                word, id=element_id,
+                n_clicks=0, action=True
+            ))
 
         return (
             results,
-            f'Found {len(search_results)} matches (showing first {len(results)}).'
+            # Create the label showing the number of matches found.
+            'Found {} matches{}.'.format(
+                len(search_results),
+                f'(showing first {len(results)})' if len(search_results) > len(results) else ''
+            )
         )
+
+    @app.callback(
+        [Output('selected-word-tab', 'children'),
+        Output('selected-word-tab', 'disabled'),
+        Output('analysis-tabs', 'active_tab')],
+        Input({'type': 'search-result', 'index': ALL, 'word': ALL}, 'n_clicks'))
+    def on_search_result_clicked(n_clicks: List[int]) -> None:
+        """Triggered when any search result is clicked."""
+        ctx = dash.callback_context
+        # If the context is None, then we can't trace the event, so return.
+        #
+        # Or, if the event was triggered from multiple sources, then we know that
+        # this wasn't a click event (rather, an init event), since the user can't
+        # click on multiple buttons at the same time.
+        if ctx is None or len(ctx.triggered) > 1:
+            return ([], True, 'search-tab')
+
+        triggered = ctx.triggered[0]
+        if triggered.get('value') is None:
+            return ([], True, 'search-tab')
+
+        # The prop_id is a string of the form '{index data}.n_clicks' where index data
+        # is a JSON-like string containing information about the element ID.
+        # This can contain custom data, and in our case, we store the word of each element here.
+        id_dict = json.loads(triggered['prop_id'].split('.')[0])
+        return ([id_dict['word']], False, 'selected-word-tab')
 
 
 def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
