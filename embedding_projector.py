@@ -116,7 +116,7 @@ class WordEmbeddings:
 
     def most_similar(self, word: Optional[str] = None, k: Optional[int] = 10) \
             -> List[Tuple[str, float]]:
-        """Finds the most common words to the given word, based on the cosine similarity.
+        """Finds the most similar words to the given word, based on the cosine similarity.
 
         Return a list of 2-element tuple of the word and similarity,
         sorted in decreasing order of the similarity.
@@ -132,7 +132,6 @@ class WordEmbeddings:
         """
         if word not in self._vocabulary:
             return []
-
 
         # Default to the vocab size
         # Clamp the given value of k to be in the range [0, vocab_size].
