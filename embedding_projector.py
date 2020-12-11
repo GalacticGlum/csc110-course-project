@@ -512,30 +512,30 @@ def main(args: argparse.Namespace) -> None:
 
 
 if __name__ == '__main__':
-    import python_ta
-    python_ta.check_all(config={
-        'extra-imports': [
-            'json',
-            'uuid',
-            'argparse',
-            'pathlib',
-            'typing',
-            'numpy',
-            'logger',
-            'utils',
-            'word_embeddings',
-            'plotly.express',
-            'plotly.graph_objs',
-            'dash',
-            'dash_core_components',
-            'dash_html_components',
-            'dash_bootstrap_components',
-            'dash.dependencies'
-        ],
-        'allowed-io': [''],
-        'max-line-length': 100,
-        'disable': ['R1705', 'C0200', 'W0612']
-    })
+    # import python_ta
+    # python_ta.check_all(config={
+    #     'extra-imports': [
+    #         'json',
+    #         'uuid',
+    #         'argparse',
+    #         'pathlib',
+    #         'typing',
+    #         'numpy',
+    #         'logger',
+    #         'utils',
+    #         'word_embeddings',
+    #         'plotly.express',
+    #         'plotly.graph_objs',
+    #         'dash',
+    #         'dash_core_components',
+    #         'dash_html_components',
+    #         'dash_bootstrap_components',
+    #         'dash.dependencies'
+    #     ],
+    #     'allowed-io': [''],
+    #     'max-line-length': 100,
+    #     'disable': ['R1705', 'C0200', 'W0612']
+    # })
 
     parser = argparse.ArgumentParser(description='Tool for visualising '
                                                  'embeddings in 2D and 3D space.')
