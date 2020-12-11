@@ -95,14 +95,14 @@ class WordEmbeddings:
 
     def _build_suffix_tree(self) -> None:
         """Build a suffix tree from the vocabulary."""
-        logger.info('Building suffix tree!')
+        logger.info(f'Building suffix tree for embedding ({str(self)})')
         self._all_words = ' '.join(self.words)
         self._suffix_tree = SuffixTree(self._all_words)
         logger.info('Finished building suffix tree!')
 
     def _build_nearest_neighbours(self) -> None:
         """Build a nearest neighbour searcher from the embedding vectors."""
-        logger.info('Building nearest neighbours!')
+        logger.info(f'Building nearest neighbours for embeddings ({str(self)})')
 
         # We use a KNN model to perform embedding similarity search quickly.
         # The goal is to find the most similar embedding vectors based on their cosine similarity.
