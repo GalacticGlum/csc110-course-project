@@ -2,7 +2,7 @@
 
 import re
 import random
-from typing import Optional, Union
+from typing import Optional, Union, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np

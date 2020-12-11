@@ -562,7 +562,8 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         # Or, if the event was triggered from multiple sources, then we know that
         # this wasn't a click event (rather, an init event), since the user can't
         # click on multiple buttons at the same time.
-        if ctx is None or len(ctx.triggered) > 1:
+        not_has_clicked = all(x == 0 for x in n_clicks)
+        if not_has_clicked or ctx is None or len(ctx.triggered) > 1:
             return ([], True, 'search-tab')
 
         triggered = ctx.triggered[0]
