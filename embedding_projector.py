@@ -27,7 +27,7 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 import dash_bootstrap_components as dbc
-from dash.dependencies import Input, Output, State, MATCH, ALL
+from dash.dependencies import Input, Output, State, ALL
 
 
 def cosine_similarity(u: np.ndarray, v: np.ndarray) -> float:
@@ -498,18 +498,6 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         """
         return not bool(use_z_component_values)
 
-    # @app.callback(
-    #     Output('hidden-div', 'children'),
-    #     Input('embedding-graph', 'clickData'))
-    # def on_click_embedding_graph(click_data: dict) -> None:
-    #     """Trigged when a point is clicked on the embedding graph.
-
-    #     Args:
-    #         click_data: A dictionary containing the information of the points
-    #             the user is clicked on.
-    #     """
-    #     # print(click_data)
-
     @app.callback([
         Output('word-search-results', 'children'),
         Output('word-search-matches', 'children')],
@@ -552,32 +540,61 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         [Output('selected-word-tab', 'children'),
         Output('selected-word-tab', 'disabled'),
         Output('analysis-tabs', 'active_tab')],
-        Input({'type': 'search-result', 'index': ALL, 'word': ALL}, 'n_clicks'),
+        [Input('embedding-graph', 'clickData'),
+        Input({'type': 'search-result', 'index': ALL, 'word': ALL}, 'n_clicks')],
         State('embeddings-dropdown', 'value'))
-    def on_search_result_clicked(n_clicks: List[int], index: int) -> None:
-        """Triggered when any search result is clicked."""
+    def update_word_selection(click_data: dict, n_clicks: List[int], index: int) -> None:
+        """Triggered when a new word is selected.
+
+        Args:
+            n_clicks: The number of times each search result list item has been clicked.
+            click_data: Information about the point the user clicked on the embedding graph.
+            index: The index of the currently selected word embeddigns object.
+        """
+        # The default/empty return value.
+        DEFAULT = ([], True, 'search-tab')
+
         ctx = dash.callback_context
         # If the context is None, then we can't trace the event, so return.
-        #
-        # Or, if the event was triggered from multiple sources, then we know that
-        # this wasn't a click event (rather, an init event), since the user can't
-        # click on multiple buttons at the same time.
-        not_has_clicked = all(x == 0 for x in n_clicks)
-        if not_has_clicked or ctx is None or len(ctx.triggered) > 1:
-            return ([], True, 'search-tab')
+        if ctx is None:
+            return DEFAULT
 
         triggered = ctx.triggered[0]
-        if triggered.get('value') is None:
-            return ([], True, 'search-tab')
+        # If the triggered prop_id contains 'n_clicks' then it was triggered
+        # by a search result list item. Otherwise, it was triggered by clicking on the graph.
+        if 'n_clicks' in triggered['prop_id']:
+            if n_clicks is None:
+                return DEFAULT
 
-        # The prop_id is a string of the form '{index data}.n_clicks' where index data
-        # is a JSON-like string containing information about the element ID.
-        # This can contain custom data, and in our case, we store the word of each element here.
-        id_dict = json.loads(triggered['prop_id'].split('.')[0])
+            # Check if the click counts are all zero..
+            # In which case, the user hasn't clicked on a button.
+            not_has_clicked = all(x == 0 for x in n_clicks)
+            # If the event was triggered from multiple sources, then we know that
+            # this wasn't a click event (rather, an init event), since the user can't
+            # click on multiple buttons at the same time.
+            if not_has_clicked or len(ctx.triggered) > 1:
+                return DEFAULT
+
+            # The prop_id is a string of the form '{index data}.n_clicks' where index data
+            # is a JSON-like string containing information about the element ID.
+            # This can contain custom data, and in our case, we store the word of each element here.
+            id_dict = json.loads(triggered['prop_id'].split('.')[0])
+            selected_word = id_dict['word']
+        elif 'clickData' in triggered['prop_id']:
+            # Make sure that the click data is not None or empty
+            if click_data is None or len(click_data) == 0:
+                return DEFAULT
+
+            point_data = click_data['points'][0]
+            # Depending on the type of plot, the selected word is either contained in
+            # the text or hovertext attribute. Get whichever is not None.
+            selected_word = point_data.get('text', None) or point_data.get('hovertext', None)
+        else:
+            return DEFAULT
 
         # Get most similar words in the embedding space
         embeddings = embeddings_list[index]
-        most_similar = embeddings.most_similar(id_dict['word'], k=100)
+        most_similar = embeddings.most_similar(selected_word, k=100)
 
         # The colours for a similarity score of 0 and 1 respectively.
         MIN_SCORE_COLOUR = (133, 100, 4)
@@ -602,7 +619,7 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
             ))
 
         tab_contents = html.Div([
-            dbc.FormText(id_dict['word'], className='pt-3'),
+            dbc.FormText(selected_word, className='pt-3'),
             html.Label('Nearest points in vector space:'),
             dbc.ListGroup(
                 elements,
