@@ -326,11 +326,16 @@ def _make_layout(embeddings_list: List[WordEmbeddings]) -> object:
                 ])
             ]), width=2),
             dbc.Col(html.Div([
-                dcc.Graph(
-                    # Make a defualt empty graph
-                    figure=_make_embedding_scatter([], [], [], []),
-                    id='embedding-graph',
-                    style={'height': '100vh'}
+                dcc.Loading(id='embedding-graph-loading',
+                    children=[
+                        dcc.Graph(
+                            # Make a defualt empty graph
+                            figure=_make_embedding_scatter([], [], [], []),
+                            id='embedding-graph',
+                            style={'height': '100vh'}
+                        )
+                    ],
+                    type='default'
                 )
             ]), width=8),
             dbc.Col(html.Div([
