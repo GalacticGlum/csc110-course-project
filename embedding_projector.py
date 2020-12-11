@@ -13,10 +13,6 @@ from typing import (
 )
 
 import numpy as np
-from logger import logger
-from utils import rgb_lerp, rgb_to_str
-from word_embeddings import WordEmbeddings
-
 import plotly.express as px
 import plotly.graph_objs as go
 
@@ -26,8 +22,12 @@ import dash_html_components as html
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State, ALL
 
+from logger import logger
+from utils import rgb_lerp, rgb_to_str
+from word_embeddings import WordEmbeddings
 
-def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray, \
+
+def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray,
                             z: Optional[np.ndarray] = None) -> go.Figure:
     """Make a scatter plot given the embedding weight data.
     Return a 3D scatter plot if three dimensions were given, or a 2D scatter plot otherwise.
@@ -48,12 +48,7 @@ def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray, \
                 'opacity': 0.25,
                 'color': ['rgb(1, 135, 75)'] * len(words)
             },
-            hovertemplate=
-            '<b>%{text}</b><br>' +
-            '<br>x: %{x}' +
-            '<br>y: %{y}' +
-            '<br>z: %{z}' +
-            '<extra></extra>',
+            hovertemplate='<b>%{text}</b><br><br>x: %{x}<br>y: %{y}<br>z: %{z}<extra></extra>',
             text=words
         )])
 
@@ -88,6 +83,7 @@ def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray, \
 
     return embedding_fig
 
+
 def _make_layout(embeddings_list: List[WordEmbeddings]) -> object:
     """Create the layout for the embedding projector app."""
     return dbc.Container(fluid=True, children=[
@@ -107,20 +103,18 @@ def _make_layout(embeddings_list: List[WordEmbeddings]) -> object:
                     html.H3('DATA', style={'font-weight': 'bold'}),
                     html.Label('Embeddings'),
                     dcc.Dropdown(id='embeddings-dropdown',
-                        options=[
-                            {'label': str(embeddings), 'value': i}
-                            for i, embeddings in enumerate(embeddings_list)
-                        ],
-                        clearable=False,
-                        value=0
-                    ),
+                                 options=[
+                                     {'label': str(embeddings), 'value': i}
+                                     for i, embeddings in enumerate(embeddings_list)
+                                 ],
+                                 clearable=False,
+                                 value=0),
                     html.Div(id='metadata-div'),
                     dbc.Checklist(id='spherize-data',
-                        options=[{'label': 'Spherize data', 'value': 'yes'}],
-                        value=['yes'],
-                        inline=True,
-                        switch=True
-                    )
+                                  options=[{'label': 'Spherize data', 'value': 'yes'}],
+                                  value=['yes'],
+                                  inline=True,
+                                  switch=True)
                 ]),
                 html.Div([
                     html.H3('PCA', style={'font-weight': 'bold'}),
@@ -129,12 +123,11 @@ def _make_layout(embeddings_list: List[WordEmbeddings]) -> object:
                     dbc.Label('Y-axis'),
                     dcc.Dropdown(id='y-component-dropdown', value=1, clearable=False),
                     dbc.Checklist(id='use-z-component',
-                        options=[{'label': 'Z-Axis', 'value': 'yes'}],
-                        value=['yes'],
-                        inline=True,
-                        switch=True,
-                        className='py-1'
-                    ),
+                                  options=[{'label': 'Z-Axis', 'value': 'yes'}],
+                                  value=['yes'],
+                                  inline=True,
+                                  switch=True,
+                                  className='py-1'),
                     dcc.Dropdown(id='z-component-dropdown', value=2, clearable=False),
                     html.Br(),
                     html.Label(id='pca-variance-label')
@@ -142,50 +135,45 @@ def _make_layout(embeddings_list: List[WordEmbeddings]) -> object:
             ]), width=2),
             dbc.Col(html.Div([
                 dcc.Loading(id='embedding-graph-loading',
-                    children=[
-                        dcc.Graph(
-                            # Make a defualt empty graph
-                            figure=_make_embedding_scatter([], [], [], []),
-                            id='embedding-graph',
-                            style={'height': '100vh'}
-                        )
-                    ],
-                    type='default'
-                )
+                            children=[
+                                dcc.Graph(
+                                    # Make a defualt empty graph
+                                    figure=_make_embedding_scatter([], [], [], []),
+                                    id='embedding-graph',
+                                    style={'height': '100vh'}
+                                )
+                            ],
+                            type='default')
             ]), width=8),
             dbc.Col(html.Div([
                 html.Div([
                     html.H3('ANALYSIS', style={'font-weight': 'bold'}),
                     dbc.Row([
                         dbc.Col([dbc.Button('Show All Data',
-                            id='show-all-data-button',
-                            outline=True,
-                            color='dark',
-                            className='mr-2 my-4',
-                            disabled=True
-                        )]),
+                                            id='show-all-data-button',
+                                            outline=True,
+                                            color='dark',
+                                            className='mr-2 my-4',
+                                            disabled=True)]),
                         dbc.Col([dbc.Button('Isolate Points',
-                            id='isolate-points-button',
-                            outline=True,
-                            color='dark',
-                            className='mr-2 my-4',
-                            disabled=True
-                        )]),
+                                            id='isolate-points-button',
+                                            outline=True,
+                                            color='dark',
+                                            className='mr-2 my-4',
+                                            disabled=True)]),
                         dbc.Col([dbc.Button('Clear Selection',
-                            id='clear-selection-button',
-                            outline=True,
-                            color='dark',
-                            className='my-4',
-                            disabled=True
-                        )])
+                                            id='clear-selection-button',
+                                            outline=True,
+                                            color='dark',
+                                            className='my-4',
+                                            disabled=True)])
                     ], no_gutters=True),
                     dbc.Tabs([
                         dbc.Tab(tab_id='search-tab', children=[
                             html.Div([
                                 dbc.Input(id='word-search-input',
-                                    type='text',
-                                    placeholder='Search'
-                                ),
+                                          type='text',
+                                          placeholder='Search'),
                                 dbc.FormText(id='word-search-matches', color='secondary'),
                                 html.Div([
                                     dbc.ListGroup(id='word-search-results', className='pt-3')
@@ -210,14 +198,13 @@ def _make_layout(embeddings_list: List[WordEmbeddings]) -> object:
 
 def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> None:
     """Make the callbacks for the embedding projector app."""
-    @app.callback([
-        Output('x-component-dropdown', 'options'),
-        Output('y-component-dropdown', 'options'),
-        Output('z-component-dropdown', 'options'),
-        Output('metadata-div', 'children'),
-        Output('update-embeddings-signal', 'children')],
-        [Input('embeddings-dropdown', 'value'),
-        Input('spherize-data', 'value')])
+    @app.callback([Output('x-component-dropdown', 'options'),
+                   Output('y-component-dropdown', 'options'),
+                   Output('z-component-dropdown', 'options'),
+                   Output('metadata-div', 'children'),
+                   Output('update-embeddings-signal', 'children')],
+                  [Input('embeddings-dropdown', 'value'),
+                   Input('spherize-data', 'value')])
     def embeddings_changed(index: int, spherize_data_values: list) \
             -> Tuple[List[dict], List[dict], List[dict], str]:
         """Triggered when the selected embedding changes.
@@ -257,15 +244,14 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
             str(uuid.uuid4()),  # Output for the signal div.
         )
 
-    @app.callback([
-        Output('embedding-graph', 'figure'),
-        Output('pca-variance-label', 'children')],
-        [Input('x-component-dropdown', 'value'),
-        Input('y-component-dropdown', 'value'),
-        Input('z-component-dropdown', 'value'),
-        Input('use-z-component', 'value'),
-        Input('update-embeddings-signal', 'children')],
-        State('embeddings-dropdown', 'value'))
+    @app.callback([Output('embedding-graph', 'figure'),
+                   Output('pca-variance-label', 'children')],
+                  [Input('x-component-dropdown', 'value'),
+                   Input('y-component-dropdown', 'value'),
+                   Input('z-component-dropdown', 'value'),
+                   Input('use-z-component', 'value'),
+                   Input('update-embeddings-signal', 'children')],
+                  State('embeddings-dropdown', 'value'))
     def components_changed(x_component: int, y_component: int, z_component: int,
                            use_z_component_values: list, signal: object, index: int) \
             -> Tuple[dash.Figure, str]:
@@ -308,9 +294,8 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
             f'Total variance described: {total_variance * 100:.2f}%.'
         )
 
-    @app.callback(
-        Output('z-component-dropdown', 'disabled'),
-        Input('use-z-component', 'value'))
+    @app.callback(Output('z-component-dropdown', 'disabled'),
+                  Input('use-z-component', 'value'))
     def toggle_use_z_component(use_z_component_values: list) -> bool:
         """Trigged when the use-z-component checklist is toggled.
 
@@ -321,11 +306,10 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         """
         return not bool(use_z_component_values)
 
-    @app.callback([
-        Output('word-search-results', 'children'),
-        Output('word-search-matches', 'children')],
-        Input('word-search-input', 'value'),
-        State('embeddings-dropdown', 'value'))
+    @app.callback([Output('word-search-results', 'children'),
+                   Output('word-search-matches', 'children')],
+                  Input('word-search-input', 'value'),
+                  State('embeddings-dropdown', 'value'))
     def on_search_changed(search_term: str, index: int) -> Tuple[List[dbc.ListGroupItem], str]:
         """Triggered when the search box changes."""
         # The number of search results to show.
@@ -362,9 +346,8 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
             )
         )
 
-    @app.callback(
-        Output('word-search-input', 'value'),
-        Input('clear-selection-button', 'n_clicks'))
+    @app.callback(Output('word-search-input', 'value'),
+                  Input('clear-selection-button', 'n_clicks'))
     def clear_search_selection(n_clicks: int) -> str:
         """Triggered when the clear search selection button is clicked.
 
@@ -373,14 +356,13 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         """
         return ''
 
-    @app.callback(
-        [Output('selected-word-tab', 'children'),
-        Output('selected-word-tab', 'disabled'),
-        Output('analysis-tabs', 'active_tab'),
-        Output('clear-selection-button', 'disabled')],
-        [Input('embedding-graph', 'clickData'),
-        Input({'type': 'search-result', 'index': ALL, 'word': ALL}, 'n_clicks')],
-        State('embeddings-dropdown', 'value'))
+    @app.callback([Output('selected-word-tab', 'children'),
+                   Output('selected-word-tab', 'disabled'),
+                   Output('analysis-tabs', 'active_tab'),
+                   Output('clear-selection-button', 'disabled')],
+                  [Input('embedding-graph', 'clickData'),
+                   Input({'type': 'search-result', 'index': ALL, 'word': ALL}, 'n_clicks')],
+                  State('embeddings-dropdown', 'value'))
     def update_word_selection(click_data: dict, n_clicks: List[int], index: int) -> None:
         """Triggered when a new word is selected.
 
@@ -505,10 +487,12 @@ def embedding_projector(embeddings_list: List[WordEmbeddings],
 def main(args: argparse.Namespace) -> None:
     """Main entrypoint for the script."""
     # Ensure that at least on data argument was provided
-    if args.checkpoint_directory is None and \
-       args.weights_filepath is None and \
-        args.vocab_filepath is None:
-        logger.error('One of --checkpoints / (--weights-filepath and --vocab-filepath) is required!')
+    if args.checkpoint_directory is None \
+       and args.weights_filepath is None \
+       and args.vocab_filepath is None:
+
+        logger.error('One of --checkpoints / (--weights-filepath '
+                     'and --vocab-filepath) is required!')
         exit(1)
 
     if args.checkpoint_directory is not None:
@@ -528,11 +512,37 @@ def main(args: argparse.Namespace) -> None:
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Tool for visualising embeddings in 2D and 3D space.')
+    import python_ta
+    python_ta.check_all(config={
+        'extra-imports': [
+            'json',
+            'uuid',
+            'argparse',
+            'pathlib',
+            'typing',
+            'numpy',
+            'logger',
+            'utils',
+            'word_embeddings',
+            'plotly.express',
+            'plotly.graph_objs',
+            'dash',
+            'dash_core_components',
+            'dash_html_components',
+            'dash_bootstrap_components',
+            'dash.dependencies'
+        ],
+        'allowed-io': [''],
+        'max-line-length': 100,
+        'disable': ['R1705', 'C0200', 'W0612']
+    })
+
+    parser = argparse.ArgumentParser(description='Tool for visualising '
+                                                 'embeddings in 2D and 3D space.')
     parser.add_argument('--checkpoint', dest='checkpoint_directory', type=Path, default=None,
-                        help='Path to a checkpoint directory containing a numpy file with the trained '
-                             'embedding weights (proj_weights.npy) and a text file with the model '
-                             'vocabulary (vocab.txt)')
+                        help='Path to a checkpoint directory containing a numpy file with '
+                             'the trained embedding weights (proj_weights.npy) and a text '
+                             'file with the model vocabulary (vocab.txt)')
     parser.add_argument('-w', '--weights-filepath', type=Path, default=None,
                         help='Path to a numpy file containing the trained embedding weights. '
                              'Use this instead of specifying the checkpoint directory.')
@@ -543,5 +553,4 @@ if __name__ == '__main__':
                         help='The port to open the server on. Defaults to 5006.')
     parser.add_argument('--debug', action='store_true', dest='debug',
                         help='Whether to run the app in debug mode.')
-    parser.add_argument
     main(parser.parse_args())

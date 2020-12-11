@@ -8,9 +8,10 @@ from typing import (
 )
 
 import numpy as np
-from logger import logger
 from sklearn import decomposition, neighbors
 from suffix_trees.STree import STree as SuffixTree
+from logger import logger
+
 
 def cosine_similarity(u: np.ndarray, v: np.ndarray) -> float:
     """Return the cosine similarity of the two given vectors.
@@ -36,6 +37,12 @@ class WordEmbeddings:
         - vocab_filepath: The path to the vocab file.
         - name_metadata: The name of the word embeddings checkpoint.
     """
+    weights: np.ndarray
+    words: List[str]
+    weights_filepath: Path
+    vocab_filepath: Path
+    name_metadata: str
+
     # Private Instance Attributes:
     #   - _vocabulary: A dictionary mapping a word to its index.
     #   - _pca: Fitted sklearn PCA object.
@@ -63,6 +70,9 @@ class WordEmbeddings:
                 the word with encoded index 0, and so on).
             name_metadata: The name of the word embeddings checkpoint.
         """
+        self.weights_filepath = weights_filepath
+        self.vocab_filepath = vocab_filepath
+
         with open(vocab_filepath) as file:
             self.words = file.read().splitlines()
 
@@ -77,20 +87,20 @@ class WordEmbeddings:
 
     def _build_suffix_tree(self) -> None:
         """Build a suffix tree from the vocabulary."""
-        logger.info(f'Building suffix tree for embedding ({str(self)})')
+        logger.info('Building suffix tree for embedding (%s)' % str(self))
         self._all_words = ' '.join(self.words)
         self._suffix_tree = SuffixTree(self._all_words)
         logger.info('Finished building suffix tree!')
 
     def _build_nearest_neighbours(self) -> None:
         """Build a nearest neighbour searcher from the embedding vectors."""
-        logger.info(f'Building nearest neighbours for embeddings ({str(self)})')
+        logger.info('Building nearest neighbours for embeddings (%s)' % str(self))
 
         # We use a KNN model to perform embedding similarity search quickly.
         # The goal is to find the most similar embedding vectors based on their cosine similarity.
-        # However, while KNN does not support the cosine metric, by normalizing the embedding vectors,
-        # we can use a KNN on Euclidean distance to find the most similar vectors, and we will get the
-        # same ordering as we would if we used cosine similarity.
+        # However, while KNN does not support the cosine metric, by normalizing the embedding
+        # vectors, we can use a KNN on Euclidean distance to find the most similar vectors, and
+        # we will get the same ordering as we would if we used cosine similarity.
         self._nearest_neighbours = neighbors.NearestNeighbors(n_neighbors=10)
         # Normalized the weights to have unit norm
         normalized_weights = self.weights / np.linalg.norm(self.weights, axis=-1, keepdims=True)
@@ -128,7 +138,7 @@ class WordEmbeddings:
         # Get the nearest neighbours
         # The KNN returns a numpy array with shape (batch_size, vector_size),
         # but in our case the batch size is just 1 (the single embedding vector input).
-        distances, indices = self._nearest_neighbours.kneighbors([vector], n_neighbors=k)
+        _, indices = self._nearest_neighbours.kneighbors([vector], n_neighbors=k)
 
         most_similar = [(
             self.words[index],
@@ -192,3 +202,22 @@ class WordEmbeddings:
         if self.name_metadata is None:
             return super().__str__()
         return self.name_metadata
+
+
+if __name__ == '__main__':
+    import python_ta
+    python_ta.check_all(config={
+        'extra-imports': [
+            'pathlib',
+            'typing',
+            'numpy',
+            'logger',
+            'sklearn',
+            'sklearn.decomposition',
+            'sklearn.neighbors',
+            'suffix_trees.STree',
+        ],
+        'allowed-io': ['WordEmbeddings.__init__'],
+        'max-line-length': 100,
+        'disable': ['R1705', 'C0200', 'E9998']
+    })
