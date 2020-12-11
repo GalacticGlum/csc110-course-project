@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import uuid
-import heapq
 import argparse
 from pathlib import Path
 from typing import (
@@ -17,7 +16,7 @@ from typing import (
 
 import numpy as np
 from logger import logger
-from sklearn import decomposition
+from sklearn import decomposition, neighbors
 from suffix_trees.STree import STree as SuffixTree
 
 import plotly.express as px
@@ -60,11 +59,13 @@ class WordEmbeddings:
     #   - _reduced_weights: Word embeddings reduced to a lower dimensional space.
     #   - _all_words: A space-separated string containing all the words in the vocabulary.
     #   - _suffix_tree: A suffix tree for fast searching of the vocabulary.
+    #   - _nearest_neighbours: A nearest neighbours model for finding most similar embeddings.
     _vocabulary: Dict[str, int]
     _pca: decomposition.PCA
     _reduced_weights: np.ndarray
     _all_words: str
     _suffix_tree: SuffixTree
+    _nearest_neighbours: neighbors.NearestNeighbors
 
     def __init__(self, weights_filepath: Path, vocab_filepath: Path,
                  name_metadata: Optional[str] = None) -> None:
@@ -88,16 +89,34 @@ class WordEmbeddings:
         self._pca = None
         self._reduced_weights = None
 
+        self._build_suffix_tree()
+        self._build_nearest_neighbours()
+
+    def _build_suffix_tree(self) -> None:
+        """Build a suffix tree from the vocabulary."""
         logger.info('Building suffix tree!')
         self._all_words = ' '.join(self.words)
         self._suffix_tree = SuffixTree(self._all_words)
         logger.info('Finished building suffix tree!')
 
-    def most_similar(self, word: Optional[str] = None, k: Optional[int] = None,
-                     similarity_func: Optional[callable] = None,
-                     vector: Optional[np.ndarray] = None) \
+    def _build_nearest_neighbours(self) -> None:
+        """Build a nearest neighbour searcher from the embedding vectors."""
+        logger.info('Building nearest neighbours!')
+
+        # We use a KNN model to perform embedding similarity search quickly.
+        # The goal is to find the most similar embedding vectors based on their cosine similarity.
+        # However, while KNN does not support the cosine metric, by normalizing the embedding vectors,
+        # we can use a KNN on Euclidean distance to find the most similar vectors, and we will get the
+        # same ordering as we would if we used cosine similarity.
+        self._nearest_neighbours = neighbors.NearestNeighbors(n_neighbors=10)
+        # Normalized the weights to have unit norm
+        normalized_weights = self.weights / np.linalg.norm(self.weights, axis=-1, keepdims=True)
+        self._nearest_neighbours.fit(normalized_weights)
+        logger.info('Finished building nearest neighbours!')
+
+    def most_similar(self, word: Optional[str] = None, k: Optional[int] = 10) \
             -> List[Tuple[str, float]]:
-        """Finds the most common words to the given word.
+        """Finds the most common words to the given word, based on the cosine similarity.
 
         Return a list of 2-element tuple of the word and similarity,
         sorted in decreasing order of the similarity.
@@ -108,45 +127,32 @@ class WordEmbeddings:
             word: The search word. Required if vector is not specified.
             k: The number of most similar words to return.
                 If unspecified, all words in the vocabulary are returned.
-            similarity_func: A function which takes two embedding vectors
-                (represented as one-dimensional numpy arrays) as input and
-                returns a float indicating how similar the two vectors.
-
-                If unspecified, defaults to the cosine similarity metric.
             vector: A vector with the same number of dimensions as the vector
                 embeddings to search instead of a word.
         """
-        assert word is not None or vector is not None
-        if word is not None and word not in self._vocabulary:
+        if word not in self._vocabulary:
             return []
+
 
         # Default to the vocab size
         # Clamp the given value of k to be in the range [0, vocab_size].
         vocab_size = len(self.words)
-        k = max(min(k or vocab_size, vocab_size), 0)
+        # We get the k + 1 nearest neighbours since the model gives back the input as well.
+        k = max(min((k or vocab_size) + 1, vocab_size), 0)
 
-        # Default to the cosine similarity metric
-        similarity_func = similarity_func or cosine_similarity
+        # Lookup the embedding vector
+        word_index = self._vocabulary[word]
+        vector = self.weights[word_index]
+        # Get the nearest neighbours
+        # The KNN returns a numpy array with shape (batch_size, vector_size),
+        # but in our case the batch size is just 1 (the single embedding vector input).
+        distances, indices = self._nearest_neighbours.kneighbors([vector], n_neighbors=k)
 
-        word_index = None
-        if vector is None:
-            word_index = self._vocabulary[word]
-            vector = self.weights[word_index]
-
-        # A list of 2-element tuples containing the similarity to the search word
-        # and the index of the word in the vocabulary.
-        all_similarities = [
-            (similarity_func(vector, u), i)
-            for i, u in enumerate(self.weights)
-            if i != word_index   # We don't want to include the search word
-        ]
-
-        # Use a min-heap to efficiently get most similar words
-        most_similar = heapq.nlargest(k, all_similarities)
-        most_similar = [
-            (self.words[index], similarity)
-            for similarity, index in most_similar
-        ]
+        most_similar = [(
+            self.words[index],
+            # Recompute the distance, but using cosine similarity.
+            cosine_similarity(vector, self.weights[index])
+        ) for index in indices[0] if index != word_index]
 
         return most_similar
 
