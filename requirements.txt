@@ -17,7 +17,10 @@ contractions>0.0.18
 tensorflow
 sklearn
 
+# For string searching
+suffix_trees
+
 # Visualization
 dash==1.18.0
-ipywidgets>=7.0.0
+dash-bootstrap-components
 flask_caching

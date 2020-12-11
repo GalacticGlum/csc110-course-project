@@ -5,17 +5,19 @@ from __future__ import annotations
 import uuid
 import heapq
 import argparse
+from pathlib import Path
 from typing import (
     Optional,
     Tuple,
     List,
-    Dict
+    Dict,
+    Generator
 )
 
 import numpy as np
-from sklearn import decomposition
-from pathlib import Path
 from logger import logger
+from sklearn import decomposition
+from suffix_trees.STree import STree as SuffixTree
 
 import plotly.express as px
 import plotly.graph_objs as go
@@ -23,7 +25,8 @@ import plotly.graph_objs as go
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
-from dash.dependencies import Input, Output
+import dash_bootstrap_components as dbc
+from dash.dependencies import Input, Output, State
 
 
 def cosine_similarity(u: np.ndarray, v: np.ndarray) -> float:
@@ -54,9 +57,13 @@ class WordEmbeddings:
     #   - _vocabulary: A dictionary mapping a word to its index.
     #   - _pca: Fitted sklearn PCA object.
     #   - _reduced_weights: Word embeddings reduced to a lower dimensional space.
+    #   - _all_words: A space-separated string containing all the words in the vocabulary.
+    #   - _suffix_tree: A suffix tree for fast searching of the vocabulary.
     _vocabulary: Dict[str, int]
     _pca: decomposition.PCA
     _reduced_weights: np.ndarray
+    _all_words: str
+    _suffix_tree: SuffixTree
 
     def __init__(self, weights_filepath: Path, vocab_filepath: Path,
                  name_metadata: Optional[str] = None) -> None:
@@ -79,6 +86,11 @@ class WordEmbeddings:
         self._vocabulary = {word: i for i, word in enumerate(self.words)}
         self._pca = None
         self._reduced_weights = None
+
+        logger.info('Building suffix tree!')
+        self._all_words = ' '.join(self.words)
+        self._suffix_tree = SuffixTree(self._all_words)
+        logger.info('Finished building suffix tree!')
 
     def most_similar(self, word: Optional[str] = None, k: Optional[int] = None,
                      similarity_func: Optional[callable] = None,
@@ -167,9 +179,20 @@ class WordEmbeddings:
             weights = self.weights
 
         self._pca = decomposition.PCA(n_components=top_k_components)
-        self._pca.fit(weights)
-        self._reduced_weights = self._pca.transform(weights)
+        self._reduced_weights = self._pca.fit_transform(weights)
         return self._pca, self._reduced_weights
+
+    def search_words(self, query: str) -> List[str]:
+        """Return a list of strings that contain the query string."""
+        matches = self._suffix_tree.find_all(query.lower())
+        words = []
+        for index in matches:
+            # Find the last and next space in the string, to get the whole word.
+            i = self._all_words.rfind(' ', 0, index)
+            j = self._all_words.find(' ', index)
+            words.append(self._all_words[i + 1:j])
+
+        return words
 
     def __getitem__(self, word: str) -> np.ndarray:
         """Return the embedding vector for the given word."""
@@ -195,13 +218,13 @@ def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray, \
     """
     # Create the figure for displaying the embedding points
     if z is not None:
-        embedding_fig = go.Figure(data=[go.Scatter3d(
+        embedding_fig = go.FigureWidget(data=[go.Scatter3d(
             x=x, y=y, z=z,
             mode='markers',
             marker={
                 'size': 4.5,
                 'opacity': 0.25,
-                'color': 'rgb(1, 135, 75)'
+                'color': ['rgb(1, 135, 75)'] * len(words)
             },
             hovertemplate=
             '<b>%{text}</b><br>' +
@@ -223,11 +246,6 @@ def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray, \
                 'yaxis': axis_values,
                 'zaxis': axis_values,
                 'aspectmode': 'cube'
-            },
-            hoverlabel={
-                'bgcolor': 'white',
-                'font_size': 16,
-                'font_family': 'Arial'
             }
         )
     else:
@@ -237,11 +255,20 @@ def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray, \
             opacity=0.5
         )
 
+    # Update common layout options
+    embedding_fig.update_layout(
+        hoverlabel={
+            'bgcolor': 'white',
+            'font_size': 16,
+            'font_family': 'Arial'
+        }
+    )
+
     return embedding_fig
 
 def _make_layout(embeddings_list: List[WordEmbeddings]) -> object:
     """Create the layout for the embedding projector app."""
-    return html.Div(children=[
+    return dbc.Container(fluid=True, children=[
         html.H1(children='Embedding Projector'),
         # We use a hidden div to faciliate callbacks.
         # This 'signal' can be used both ways: to trigger a callback, or to have a callback
@@ -251,8 +278,9 @@ def _make_layout(embeddings_list: List[WordEmbeddings]) -> object:
         # but may not necessarily want to render anything new.
         html.Div(id='update-embeddings-signal', style={'display': 'none'}),
         html.Div(id='hidden-div', style={'display': 'none'}),
-        html.Div([
-            html.Div([
+        dcc.Loading(id='loading-spinner', fullscreen=True, loading_state={'is_loading': True}),
+        dbc.Row([
+            dbc.Col(html.Div([
                 html.Div([
                     html.H3('DATA', style={'font-weight': 'bold'}),
                     html.Label('Embeddings'),
@@ -265,41 +293,71 @@ def _make_layout(embeddings_list: List[WordEmbeddings]) -> object:
                         value=0
                     ),
                     html.Div(id='metadata-div'),
-                    html.Br(),
-                    dcc.Checklist(id='spherize-data',
+                    dbc.Checklist(id='spherize-data',
                         options=[{'label': 'Spherize data', 'value': 'yes'}],
-                        value=['yes']
+                        value=['yes'],
+                        inline=True,
+                        switch=True
                     )
                 ]),
                 html.Div([
                     html.H3('PCA', style={'font-weight': 'bold'}),
-                    html.Label('X'),
-                    dcc.Dropdown(id='x-component-dropdown', value=0),
-                    html.Label('Y'),
-                    dcc.Dropdown(id='y-component-dropdown', value=1),
-                    html.Div([
-                        html.Label('Z', className='ten columns'),
-                        dcc.Checklist(id='use-z-component',
-                            options=[{'label': '', 'value': 'yes'}],
-                            value=['yes'],
-                            className='two columns'
-                        )
-                    ], className='row'),
-                    dcc.Dropdown(id='z-component-dropdown', value=2),
+                    dbc.Label('X-axis'),
+                    dcc.Dropdown(id='x-component-dropdown', value=0, clearable=False),
+                    dbc.Label('Y-axis'),
+                    dcc.Dropdown(id='y-component-dropdown', value=1, clearable=False),
+                    dbc.Checklist(id='use-z-component',
+                        options=[{'label': 'Z-Axis', 'value': 'yes'}],
+                        value=['yes'],
+                        inline=True,
+                        switch=True,
+                        className='py-1'
+                    ),
+                    dcc.Dropdown(id='z-component-dropdown', value=2, clearable=False),
                     html.Br(),
                     html.Label(id='pca-variance-label')
                 ])
-            ], className='two columns'),
-            html.Div([
-                dcc.Loading(id='embedding-graph-loading',
-                    children=[dcc.Graph(
-                        id='embedding-graph',
-                        style={'height': '100vh'}
-                    )],
-                    type='default'
+            ]), width=2),
+            dbc.Col(html.Div([
+                dcc.Graph(
+                    # Make a defualt empty graph
+                    figure=_make_embedding_scatter([], [], [], []),
+                    id='embedding-graph',
+                    style={'height': '100vh'}
                 )
-            ], className='ten columns')
-        ], className='row'),
+            ]), width=8),
+            dbc.Col(html.Div([
+                html.Div([
+                    html.H3('ANALYSIS', style={'font-weight': 'bold'}),
+                    dbc.Row([
+                        dbc.Col([dbc.Button('Show All Data',
+                            outline=True,
+                            color='dark',
+                            className='mr-2 my-4',
+                            disabled=True
+                        )]),
+                        dbc.Col([dbc.Button('Isolate Points',
+                            outline=True,
+                            color='dark',
+                            className='mr-2 my-4',
+                            disabled=True
+                        )]),
+                        dbc.Col([dbc.Button('Clear Selection',
+                            outline=True,
+                            color='dark',
+                            className='my-4',
+                            disabled=True
+                        )])
+                    ], no_gutters=True),
+                    dbc.Input(id='word-search-input',
+                        type='text',
+                        placeholder='Search'
+                    ),
+                    dbc.FormText(id='word-search-matches', color='secondary'),
+                    dbc.ListGroup(id='word-search-results', className='pt-3')
+                ]),
+            ]), width=2)
+        ])
     ])
 
 
@@ -338,8 +396,8 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
 
         metadata_div = [
             html.Br(),
-            html.Label(f'Points: {len(embeddings.weights)}'),
-            html.Label(f'Dimensions: {embeddings.weights.shape[-1]}')
+            html.Div([html.P(f'Points: {len(embeddings.weights)}')]),
+            html.Div([html.P(f'Dimensions: {embeddings.weights.shape[-1]}')])
         ]
 
         return (
@@ -418,15 +476,37 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
 
     @app.callback(
         Output('hidden-div', 'children'),
-        Input('embedding-graph', 'hoverData'))
-    def on_hover_embedding_graph(hover_data: dict) -> None:
-        """Trigged when a point is hovered on the embedding graph.
+        Input('embedding-graph', 'clickData'))
+    def on_click_embedding_graph(click_data: dict) -> None:
+        """Trigged when a point is clicked on the embedding graph.
 
         Args:
-            hover_data: A dictionary containing the information of the points
-                the user is currently hover over.
+            click_data: A dictionary containing the information of the points
+                the user is clicked on.
         """
-        pass
+        # print(click_data)
+
+    @app.callback([
+        Output('word-search-results', 'children'),
+        Output('word-search-matches', 'children')],
+        [Input('embeddings-dropdown', 'value'),
+        Input('word-search-input', 'value')])
+    def on_search_changed(index: int, search_term: str) -> Tuple[List[dbc.ListGroupItem], str]:
+        """Triggered when the search box changes."""
+        if index is None or not search_term:
+            return ([], '')
+
+        embeddings = embeddings_list[index]
+        search_results = embeddings.search_words(search_term)
+
+        results = []
+        for word in search_results[:25]:
+            results.append(dbc.ListGroupItem(word))
+
+        return (
+            results,
+            f'Found {len(search_results)} matches.'
+        )
 
 
 def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
@@ -438,7 +518,8 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
     Preconditions:
         - len(embeddings_list) > 0
     """
-    external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
+    # external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
+    external_stylesheets = [dbc.themes.BOOTSTRAP]
     app = dash.Dash(
         __name__, external_stylesheets=external_stylesheets,
         title='Embedding Projector'
