@@ -354,7 +354,9 @@ def _make_layout(embeddings_list: List[WordEmbeddings]) -> object:
                         placeholder='Search'
                     ),
                     dbc.FormText(id='word-search-matches', color='secondary'),
-                    dbc.ListGroup(id='word-search-results', className='pt-3')
+                    html.Div([
+                        dbc.ListGroup(id='word-search-results', className='pt-3')
+                    ], className='overflow-auto', style={'max-height': '50vh', 'height': '100%'})
                 ]),
             ]), width=2)
         ])
@@ -505,7 +507,7 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
 
         return (
             results,
-            f'Found {len(search_results)} matches.'
+            f'Found {len(search_results)} matches (showing first {len(results)}).'
         )
 
 
