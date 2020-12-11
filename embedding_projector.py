@@ -16,6 +16,7 @@ from typing import (
 
 import numpy as np
 from logger import logger
+from utils import rgb_lerp, rgb_to_str
 from sklearn import decomposition, neighbors
 from suffix_trees.STree import STree as SuffixTree
 
@@ -543,7 +544,7 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
             # Create the label showing the number of matches found.
             'Found {} matches{}.'.format(
                 len(search_results),
-                f'(showing first {len(results)})' if len(search_results) > len(results) else ''
+                f' (showing first {len(results)})' if len(search_results) > len(results) else ''
             )
         )
 
@@ -551,8 +552,9 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         [Output('selected-word-tab', 'children'),
         Output('selected-word-tab', 'disabled'),
         Output('analysis-tabs', 'active_tab')],
-        Input({'type': 'search-result', 'index': ALL, 'word': ALL}, 'n_clicks'))
-    def on_search_result_clicked(n_clicks: List[int]) -> None:
+        Input({'type': 'search-result', 'index': ALL, 'word': ALL}, 'n_clicks'),
+        State('embeddings-dropdown', 'value'))
+    def on_search_result_clicked(n_clicks: List[int], index: int) -> None:
         """Triggered when any search result is clicked."""
         ctx = dash.callback_context
         # If the context is None, then we can't trace the event, so return.
@@ -571,7 +573,47 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         # is a JSON-like string containing information about the element ID.
         # This can contain custom data, and in our case, we store the word of each element here.
         id_dict = json.loads(triggered['prop_id'].split('.')[0])
-        return ([id_dict['word']], False, 'selected-word-tab')
+
+        # Get most similar words in the embedding space
+        embeddings = embeddings_list[index]
+        most_similar = embeddings.most_similar(id_dict['word'], k=100)
+
+        # The colours for a similarity score of 0 and 1 respectively.
+        MIN_SCORE_COLOUR = (133, 100, 4)
+        MAX_SCORE_COLOUR = (21, 87, 36)
+
+        # Build the contents of the selection tab.
+        elements = []
+        for word, similarity in most_similar:
+            # A colour based on how strong the similarity score is.
+            label_colour = rgb_to_str(rgb_lerp(MIN_SCORE_COLOUR, MAX_SCORE_COLOUR, similarity))
+            elements.append(dbc.ListGroupItem(
+                html.Div(
+                    children=[
+                        html.Div(word),
+                        html.Div(
+                            html.B(f'{similarity:.3f}'),
+                            style={'color': label_colour}
+                        )
+                    ],
+                    className='d-flex justify-content-between'
+                )
+            ))
+
+        tab_contents = html.Div([
+            dbc.FormText(id_dict['word'], className='pt-3'),
+            html.Label('Nearest points in vector space:'),
+            dbc.ListGroup(
+                elements,
+                className='overflow-auto',
+                style={
+                    'max-height': '50vh',
+                    'height': '100%'
+                }
+            )
+        ])
+
+        return (tab_contents, False, 'selected-word-tab')
 
 
 def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:

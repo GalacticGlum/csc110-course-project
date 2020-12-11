@@ -147,6 +147,33 @@ def get_next_run_id(directory: Union[str, Path], run_name: str,
     return '{}-{}'.format(str(next_id).zfill(padding), run_name)
 
 
+def rgb_lerp(colour_a: Tuple[int, int, int], colour_b: Tuple[int, int, int], t: float) \
+    -> Tuple[int, int, int]:
+    """Linearlly interpolates from one colour to another.
+
+    Preconditions:
+        - all(0 <= x <= 255 for x in colour_a)
+        - all(0 <= x <= 255 for x in colour_b)
+        - 0 <= t <= 1
+    """
+    r1, g1, b1 = colour_a
+    r2, g2, b2 = colour_b
+    return (
+        int((r2 - r1) * t + r1),
+        int((g2 - g1) * t + g1),
+        int((b2 - b1) * t + b1),
+    )
+
+
+def rgb_to_str(colour: Tuple[int, int, int]) -> str:
+    """Return a string representation of the colour tuple.
+
+    Preconditions:
+        - all(0 <= x <= 255 for x in colour)
+    """
+    return 'rgb({})'.format(','.join(str(x) for x in colour))
+
+
 if __name__ == '__main__':
     import python_ta
     python_ta.check_all(config={
