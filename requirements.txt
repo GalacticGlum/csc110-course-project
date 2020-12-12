@@ -15,6 +15,8 @@ internetarchive
 # Data processing and machine learning
 contractions>0.0.18
 tensorflow
+tensorflow-text
+tf-models-official
 sklearn
 
 # For string searching
@@ -23,4 +25,3 @@ suffix_trees
 # Visualization
 dash==1.18.0
 dash-bootstrap-components
-flask_caching
