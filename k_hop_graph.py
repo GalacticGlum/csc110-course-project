@@ -1,8 +1,11 @@
 """A tool for visualising k-hop graphs."""
 
-from typing import Set, Optional
 
 import tqdm
+import argparse
+from pathlib import Path
+from typing import Set, Optional
+
 import numpy as np
 import networkx as nx
 import matplotlib.cm as cm
@@ -13,6 +16,8 @@ from matplotlib.collections import LineCollection
 from fa2 import ForceAtlas2
 from sklearn import metrics
 from curved_edges import curved_edges
+
+from logger import logger
 from word_embeddings import WordEmbeddings
 
 
@@ -85,6 +90,7 @@ def draw_k_hop_graph(embeddings: WordEmbeddings, target_word: str,
                      min_font_size: Optional[float] = 6,
                      max_font_size: Optional[float] = 24) -> None:
     """Draw the k-hop graph for the given word embeddings and interest word.
+    This function DOES NOT show the matplotlib plot.
 
     Args:
         embeddings: The word embeddings to generate the graph for.
@@ -99,6 +105,10 @@ def draw_k_hop_graph(embeddings: WordEmbeddings, target_word: str,
         min_font_size: The minimum size of a label, in pixels.
         max_font_size: The maximum size of a label, in pixels.
     """
+    if alpha is None:
+        _, similarity  = embeddings.most_similar(target_word, k=1)[0]
+        alpha = similarity - 0.05
+
     graph = build_k_hop_graph(embeddings, target_word, k, alpha=alpha)
 
     print('computing best partition')
@@ -158,13 +168,117 @@ def draw_k_hop_graph(embeddings: WordEmbeddings, target_word: str,
         fontsize = max(max_font_size * size_multipliers[i], min_font_size)
         plt.text(x, y, embeddings.words[i], fontsize=fontsize, ha='center', va='center')
 
+
+def main(args: argparse.Namespace) -> None:
+    """Main entrypoint for the script."""
+    # Ensure that at least on data argument was provided
+    if args.checkpoint_directory is None \
+       and args.weights_filepath is None \
+       and args.vocab_filepath is None:
+
+        logger.error('One of --checkpoints / (--weights-filepath '
+                     'and --vocab-filepath) is required!')
+        exit(1)
+
+    if args.checkpoint_directory is not None:
+        weights_filepath = args.checkpoint_directory / 'proj_weights.npy'
+        vocab_filepath = args.checkpoint_directory / 'vocab.txt'
+    else:
+        weights_filepath = args.weights_filepath
+        args.vocab_filepath = args.vocab_filepath
+
+    embeddings = WordEmbeddings(
+        weights_filepath, vocab_filepath,
+        name_metadata=weights_filepath.parent.stem
+    )
+
+    figsize = (args.figure_width / args.figure_dpi, args.figure_height / args.figure_dpi)
+    plt.figure(figsize=figsize, dpi=args.figure_dpi)
+
+    draw_k_hop_graph(
+        embeddings,
+        args.target_word,
+        args.k,
+        alpha=args.alpha,
+        min_node_size=args.min_node_size,
+        max_node_size=args.max_node_size,
+        min_font_size=args.min_font_size,
+        max_font_size=args.max_font_size
+    )
+
+    # Show the plot, or output it, depending on the mode.
     plt.axis('off')
-    plt.show()
+    if not args.output_path:
+        plt.show()
+    else:
+        output_format = args.export_format[1:] if args.export_format.startswith('.') else args.export_format
+        args.output_path.parent.mkdir(parents=True, exist_ok=True)
+        if output_format == 'latex':
+            import tikzplotlib
+            tikzplotlib.save(args.output_path)
+        else:
+            plt.savefig(args.output_path, dpi=args.export_dpi)
 
 
-embeddings = WordEmbeddings(
-    'output/word2vec/00001-shakespeare/proj_weights.npy',
-    'output/word2vec/00001-shakespeare/vocab.txt'
-)
+if __name__ == '__main__':
+    # import python_ta
+    # python_ta.check_all(config={
+    #     'extra-imports': [
+    #         'tqdm',
+    #         'argparse',
+    #         'pathlib',
+    #         'typing',
+    #         'numpy',
+    #         'networkx',
+    #         'matplotlib.cm',
+    #         'matplotlib.pyplot',
+    #         'matplotlib.collections',
+    #         'community',
+    #         'fa2',
+    #         'sklearn.metrics',
+    #         'curved_edges',
+    #         'word_embeddings',
+    #         'logger',
+    #     ],
+    #     'allowed-io': [''],
+    #     'max-line-length': 100,
+    #     'disable': ['R1705', 'C0200', 'W0612']
+    # })
 
-draw_k_hop_graph(embeddings, 'juliet', 3, alpha=0.88)
+    parser = argparse.ArgumentParser(description='A tool for visualising k-hop graphs.')
+    parser.add_argument('target_word', type=str, help='The word of interest.')
+    # Preview and export configuration
+    parser.add_argument('-o', '--output', dest='output_path', type=Path, default=None,
+                        help='The file to write the figure to.')
+    parser.add_argument('-fw', '--figure-width', type=int, default=800, help='The width of the exported file.')
+    parser.add_argument('-fh', '--figure-height', type=int, default=600, help='The heght of the exported file.')
+    parser.add_argument('-dpi', '--figure-dpi', type=int, default=96, help='The DPI of the exported file.')
+    parser.add_argument('-edpi', '--export-dpi', type=int, default=96, help='The DPI of the exported file.')
+    parser.add_argument('-f', '--export-format', type=str, default='png', help='The format of the exported file.')
+    # Word Embeddings location
+    parser.add_argument('--checkpoint', dest='checkpoint_directory', type=Path, default=None,
+                        help='Path to a checkpoint directory containing a numpy file with '
+                             'the trained embedding weights (proj_weights.npy) and a text '
+                             'file with the model vocabulary (vocab.txt)')
+    parser.add_argument('-w', '--weights-filepath', type=Path, default=None,
+                        help='Path to a numpy file containing the trained embedding weights. '
+                             'Use this instead of specifying the checkpoint directory.')
+    parser.add_argument('-v', '--vocab-filepath', type=Path, default=None,
+                        help='Path to a text file containing the model vocabulary. '
+                             'Use this instead of specifying the checkpoint directory.')
+    # K-hop Graph configuration
+    parser.add_argument('--k', type=int, default=2, help='The number of \'hops\' between '
+                        'the word of interest and every node in the graph.')
+    parser.add_argument('--alpha', type=float, default=None,
+                        help='The similarity threshold. If unspecified, defaults to 0.05 '
+                        'less than the cosine similarity of the most similar word to the '
+                        'word of interest.')
+    parser.add_argument('--min-node-size', type=float, default=20,
+                        help='The minimum size of a node.')
+    parser.add_argument('--max-node-size', type=float, default=120,
+                        help='The maximum size of a node.')
+    parser.add_argument('--min-font-size', type=float, default=6,
+                        help='The minimum size of a label.')
+    parser.add_argument('--max-font-size', type=float, default=24,
+                        help='The minimum size of a label.')
+    main(parser.parse_args())

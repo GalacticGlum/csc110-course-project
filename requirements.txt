@@ -26,6 +26,7 @@ suffix_trees
 dash==1.18.0
 dash-bootstrap-components
 matplotlib
+tikzplotlib  # For exporting figures to latex
 
 # K-hop graph algorithms
 networkx  # Graph visualisation library
