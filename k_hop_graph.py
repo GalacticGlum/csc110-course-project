@@ -2,6 +2,7 @@
 
 
 import tqdm
+import logging
 import argparse
 from pathlib import Path
 from typing import Set, Optional
@@ -31,7 +32,7 @@ def build_infinity_hop_graph(embeddings: WordEmbeddings, alpha: Optional[float] 
             of at least this threshold are kept, and the rest are discarded.
     """
     graph = nx.Graph()
-    print('generating infinity-hop graph')
+    logger.info('Generating infinity-hop graph')
     # Compute the cosine similarity between all pairs of embedding vector.
     similarities = metrics.pairwise.cosine_similarity(embeddings.weights)
     # Filter out similarity scores that are less than the threshold
@@ -66,10 +67,10 @@ def build_k_hop_graph(embeddings: WordEmbeddings, target_word: str,
     T = embeddings._vocabulary[target_word]
 
     # Compute the shortest paths from the word of interest to all reachable nodes.
-    print('computing shortest paths')
+    logger.info('Computing shortest paths')
     paths = nx.single_source_shortest_path_length(graph, T)
 
-    print('building k-hop graph')
+    logger.info('Building k-hop graph')
     nodes_to_delete = set()
     for node in tqdm.tqdm(graph.nodes):
         # Remove the node if the word of interest is not reachable in at most k edges.
@@ -79,7 +80,7 @@ def build_k_hop_graph(embeddings: WordEmbeddings, target_word: str,
     for node in nodes_to_delete:
         graph.remove_node(node)
 
-    print(f'Nodes: {len(graph.nodes)}, Edges: {len(graph.edges)}')
+    logger.info(f'Generated k-hop graph (nodes: {len(graph.nodes)}, edges: {len(graph.edges)})')
     return graph
 
 
@@ -111,11 +112,11 @@ def draw_k_hop_graph(embeddings: WordEmbeddings, target_word: str,
 
     graph = build_k_hop_graph(embeddings, target_word, k, alpha=alpha)
 
-    print('computing best partition')
+    logger.info('Computing best partition (Louvain community detection)')
     # compute the best partition
     partition = community_louvain.best_partition(graph)
 
-    print('computing layout')
+    logger.info('Computing layout (ForceAtlas2)')
     forceatlas2 = ForceAtlas2(
         outboundAttractionDistribution=True,
         edgeWeightInfluence=1.0,
@@ -130,8 +131,7 @@ def draw_k_hop_graph(embeddings: WordEmbeddings, target_word: str,
 
     positions = forceatlas2.forceatlas2_networkx_layout(graph)
 
-    print('drawing')
-
+    logger.info('Rendering graph with matplotlib')
     cmap = cm.get_cmap('winter', max(partition.values()) + 1)
 
     degrees = dict(graph.degree)
@@ -187,6 +187,9 @@ def main(args: argparse.Namespace) -> None:
         weights_filepath = args.weights_filepath
         args.vocab_filepath = args.vocab_filepath
 
+    if not args.verbose:
+        logger.setLevel(logging.ERROR)
+
     embeddings = WordEmbeddings(
         weights_filepath, vocab_filepath,
         name_metadata=weights_filepath.parent.stem
@@ -218,6 +221,7 @@ def main(args: argparse.Namespace) -> None:
             tikzplotlib.save(args.output_path)
         else:
             plt.savefig(args.output_path, dpi=args.export_dpi)
+        logger.info(f'Exported figure to {args.output_path}')
 
 
 if __name__ == '__main__':
@@ -225,6 +229,7 @@ if __name__ == '__main__':
     # python_ta.check_all(config={
     #     'extra-imports': [
     #         'tqdm',
+    #         'logging',
     #         'argparse',
     #         'pathlib',
     #         'typing',
@@ -250,11 +255,17 @@ if __name__ == '__main__':
     # Preview and export configuration
     parser.add_argument('-o', '--output', dest='output_path', type=Path, default=None,
                         help='The file to write the figure to.')
-    parser.add_argument('-fw', '--figure-width', type=int, default=800, help='The width of the exported file.')
-    parser.add_argument('-fh', '--figure-height', type=int, default=600, help='The heght of the exported file.')
-    parser.add_argument('-dpi', '--figure-dpi', type=int, default=96, help='The DPI of the exported file.')
-    parser.add_argument('-edpi', '--export-dpi', type=int, default=96, help='The DPI of the exported file.')
-    parser.add_argument('-f', '--export-format', type=str, default='png', help='The format of the exported file.')
+    parser.add_argument('-fw', '--figure-width', type=int, default=800,
+                        help='The width of the exported file.')
+    parser.add_argument('-fh', '--figure-height', type=int, default=600,
+                        help='The heght of the exported file.')
+    parser.add_argument('-dpi', '--figure-dpi', type=int, default=96,
+                        help='The DPI of the exported file.')
+    parser.add_argument('-edpi', '--export-dpi', type=int, default=96,
+                        help='The DPI of the exported file.')
+    parser.add_argument('-f', '--export-format', type=str, default='png',
+                        help='The format of the exported file.')
+    parser.add_argument('--verbose', action='store_true', help='Whether to log messages.')
     # Word Embeddings location
     parser.add_argument('--checkpoint', dest='checkpoint_directory', type=Path, default=None,
                         help='Path to a checkpoint directory containing a numpy file with '
