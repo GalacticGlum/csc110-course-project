@@ -1,3 +1,9 @@
+""" Function to produce Bezier curves for the edges in a NetworkX graph.
+
+Author: Geoff Sims
+Source: https://github.com/beyondbeneath/bezier-curved-edges-networkx
+"""
+
 import bezier
 import networkx as nx
 import numpy as np
