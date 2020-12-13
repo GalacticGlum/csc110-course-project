@@ -121,7 +121,7 @@ def main(args: argparse.Namespace) -> None:
 
     # Create output directory
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    run_name = args.run_name or args.output_dir.stem
+    run_name = args.run_name or args.dataset_directory.stem
     logdir = args.output_dir / get_next_run_id(args.output_dir, run_name)
 
     # Load datasets
