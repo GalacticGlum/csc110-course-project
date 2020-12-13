@@ -81,7 +81,9 @@ def build_k_hop_graph(embeddings: WordEmbeddings, target_word: str,
     for node in nodes_to_delete:
         graph.remove_node(node)
 
-    logger.info(f'Generated k-hop graph (nodes: {len(graph.nodes)}, edges: {len(graph.edges)})')
+    logger.info('Generated k-hop graph (nodes: {}, edges: {})'.format(
+        len(graph.nodes), len(graph.edges)
+    ))
     return graph
 
 
@@ -222,7 +224,7 @@ def main(args: argparse.Namespace) -> None:
             tikzplotlib.save(args.output_path)
         else:
             plt.savefig(args.output_path, dpi=args.export_dpi)
-        logger.info(f'Exported figure to {args.output_path}')
+        logger.info('Exported figure to {}'.format(args.output_path))
 
 
 if __name__ == '__main__':

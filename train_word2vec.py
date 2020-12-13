@@ -57,7 +57,7 @@ def main(args: argparse.Namespace) -> None:
     run_name = args.run_name or args.filenames[0].stem
     logdir = args.output_dir / get_next_run_id(args.output_dir, run_name)
 
-    logger.info(f'Starting training (for {args.epochs} epochs).')
+    logger.info('Starting training (for {} epochs).'.format(args.epochs))
     model.train(
         dataset, logdir, args.initial_lr, args.target_lr,
         args.log_freq, args.save_freq

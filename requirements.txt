@@ -14,8 +14,8 @@ internetarchive
 
 # Data processing and machine learning
 contractions>0.0.18
-tensorflow
 tensorflow-text
+tensorflow
 tf-models-official
 sklearn
 
