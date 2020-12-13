@@ -9,6 +9,7 @@ from word_embeddings import WordEmbeddings, cosine_similarity
 def plot_similarity_over_time(temporal_embeddings: List[Tuple[date, WordEmbeddings]],
                               word_a: str, word_b: str) -> None:
     """Plot the cosine similarity of a word pair over time.
+    This function does NOT call show on the resultant plot.
 
     Args:
         temporal_embeddings: A list of 2-tuples containing a date and word embeddings.
@@ -32,6 +33,8 @@ def plot_similarity_over_time(temporal_embeddings: List[Tuple[date, WordEmbeddin
         y.append(similarity)
 
     plt.title(f'{word_a} - {word_b}')
+    plt.xlabel('Date')
+    plt.ylabel('Cosine Similarity')
     plt.plot_date(x, y, '-o')
 
 
