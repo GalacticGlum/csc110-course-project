@@ -33,8 +33,6 @@ class WordEmbeddings:
             encoded index i.
         - words: A list of strings, where the i-th element of the list
                 corresponds to the word with encoded index i.
-        - weights_filepath: The path to the weights file.
-        - vocab_filepath: The path to the vocab file.
         - name_metadata: The name of the word embeddings checkpoint.
     """
     weights: np.ndarray
@@ -57,10 +55,20 @@ class WordEmbeddings:
     _suffix_tree: SuffixTree
     _nearest_neighbours: neighbors.NearestNeighbors
 
-    def __init__(self, weights_filepath: Path, vocab_filepath: Path,
-                 name_metadata: Optional[str] = None, suffix_tree: Optional[bool] = True,
+    def __init__(self, weights_filepath: Optional[Path] = None,
+                 vocab_filepath: Optional[Path] = None,
+                 checkpoint_filepath: Optional[Path] = None,
+                 weights: Optional[np.ndarray] = None,
+                 words: Optional[List[str]] = None,
+                 name_metadata: Optional[str] = None,
+                 suffix_tree: Optional[bool] = True,
                  nearest_neighbours: Optional[bool] = True) -> None:
         """Initialize this word embeddings.
+
+        Requires one of:
+            - weights and words
+            - checkpoint_filepath
+            - weights_filepath and vocab_filepath
 
         Args:
             weights_filepath: Filepath to a numpy file containing trained model weights
@@ -69,17 +77,38 @@ class WordEmbeddings:
             vocab_filepath: A text file containing words of the vocabulary sorted in increasing
                 order of the index, separated by new lines (i.e. the word on line 1 indicates
                 the word with encoded index 0, and so on).
+            checkpoint_filepath: Path to a checkpoint directory containing a numpy file with
+                the trained embedding weights (proj_weights.npy) and a text file with the model
+                vocabulary (vocab.txt).
+            weights: A matrix with shape (vocab_size, n) where n is the dimensionality
+                of the embedding vectors (i.e. the number of components). The i-th row of
+                the matrix should corresponding to the embedding vector for the word with
+                encoded index i.
+            words: A list of strings, where the i-th element of the list
+                corresponds to the word with encoded index i.
             name_metadata: The name of the word embeddings checkpoint.
             suffix_tree: Whether to build the suffix tree.
             nearest_neighbours: Whether to build the nearest neighbours model.
         """
-        self.weights_filepath = weights_filepath
-        self.vocab_filepath = vocab_filepath
+        if weights and words:
+            self.words = words
+            self.weights = weights
+        elif weights_filepath and vocab_filepath:
+            # Load weights and words from the given paths
+            self.weights, self.words = WordEmbeddings._load_weights_and_vocab(
+                weights_filepath, vocab_filepath)
+        elif checkpoint_filepath:
+            # Load weights and words from the checkpoint.
+            # We assume the weights file is called proj_weights
+            # and the words file is called vocab.txt.
+            self.weights, self.words = WordEmbeddings._load_weights_and_vocab(
+                checkpoint_filepath / 'proj_weights.npy',
+                checkpoint_filepath / 'vocab.txt'
+            )
+        else:
+            raise ValueError('Requires one of (weights, words) / checkpoint_filepath / '
+                             '(weights_filepath, vocab_filepath). Got None for all.')
 
-        with open(vocab_filepath) as file:
-            self.words = file.read().splitlines()
-
-        self.weights = np.load(weights_filepath)
         self.name_metadata = name_metadata
         self._vocabulary = {word: i for i, word in enumerate(self.words)}
         self._pca = None
@@ -89,6 +118,17 @@ class WordEmbeddings:
             self._build_suffix_tree()
         if nearest_neighbours:
             self._build_nearest_neighbours()
+
+    @staticmethod
+    def _load_weights_and_vocab(weights_filepath: Path, vocab_filepath: Path) \
+            -> Tuple[np.ndarray, List[str]]:
+        """Loads the weights and vocabulary into a numpy array and list respectively.
+        Return a 2-tuple containing the weights and words.
+        """
+        with open(vocab_filepath) as file:
+            words = file.read().splitlines()
+        weights = np.load(weights_filepath)
+        return (weights, words)
 
     def _build_suffix_tree(self) -> None:
         """Build a suffix tree from the vocabulary."""
