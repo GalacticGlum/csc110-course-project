@@ -5,7 +5,9 @@ from datetime import date
 from typing import Optional, Union, Tuple, List
 import matplotlib.pyplot as plt
 
+from utils import list_join
 from word2vec import Tokenizer
+from train_text_classifier import build_classifier_model
 from word_embeddings import WordEmbeddings, cosine_similarity
 
 def plot_similarity_over_time(temporal_embeddings: List[Tuple[date, WordEmbeddings]],
@@ -65,20 +67,16 @@ def plot_frequency_over_time(temporal_tokenizers: List[Tuple[date, Tokenizer]],
             y.append(yi)
         plt.plot_date(x, y, '-o')
 
-    def readable_list(seq: List[any]) -> str:
-        seq = [str(s) for s in seq]
-        if len(seq) <= 2:
-            return ' and '.join(seq)
-        return ', '.join(seq[:-1]) + ', and ' + seq[-1]
-
-    word_list = readable_list([f'"{x}"' for x in words])
-
+    word_list = list_join([f'"{x}"' for x in words])
     variable_label = 'Proportion' if proportion else 'Mentions'
     plt.title(f'{variable_label} of the terms {word_list}')
     plt.xlabel('Date')
 
     y_label = 'Proportion' if proportion else 'Number of mentions'
     plt.ylabel(y_label)
+
+
+def
 
 
 if __name__ == '__main__':
