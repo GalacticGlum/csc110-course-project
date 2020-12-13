@@ -58,7 +58,8 @@ class WordEmbeddings:
     _nearest_neighbours: neighbors.NearestNeighbors
 
     def __init__(self, weights_filepath: Path, vocab_filepath: Path,
-                 name_metadata: Optional[str] = None) -> None:
+                 name_metadata: Optional[str] = None, suffix_tree: Optional[bool] = True,
+                 nearest_neighbours: Optional[bool] = True) -> None:
         """Initialize this word embeddings.
 
         Args:
@@ -69,6 +70,8 @@ class WordEmbeddings:
                 order of the index, separated by new lines (i.e. the word on line 1 indicates
                 the word with encoded index 0, and so on).
             name_metadata: The name of the word embeddings checkpoint.
+            suffix_tree: Whether to build the suffix tree.
+            nearest_neighbours: Whether to build the nearest neighbours model.
         """
         self.weights_filepath = weights_filepath
         self.vocab_filepath = vocab_filepath
@@ -82,8 +85,10 @@ class WordEmbeddings:
         self._pca = None
         self._reduced_weights = None
 
-        self._build_suffix_tree()
-        self._build_nearest_neighbours()
+        if suffix_tree:
+            self._build_suffix_tree()
+        if nearest_neighbours:
+            self._build_nearest_neighbours()
 
     def _build_suffix_tree(self) -> None:
         """Build a suffix tree from the vocabulary."""
