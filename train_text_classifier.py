@@ -103,17 +103,16 @@ def build_classifier_model(num_classes: int, dropout_rate: Optional[float] = 0.1
             Defaults to a small BERT model with 4 stacked encoders, and a
             hidden layer size of 512 units (i.e. L-4_H-512).
     """
-
-    x = tf.keras.layers.Input(shape=(), dtype=tf.string, name='text')
+    text_input = tf.keras.layers.Input(shape=(), dtype=tf.string, name='text')
     preprocessing_layer = hub.KerasLayer(bert_preprocess_handle, name='preprocessing')
-    encoded_x = preprocessing_layer(x)
+    encoder_inputs = preprocessing_layer(text_input)
     encoder = hub.KerasLayer(bert_model_handle, trainable=True, name='BERT_encoder')
-    outputs = encoder(encoded_x)
-    classifier = outputs['pooled_outputs']
-    # Apply dropout
-    classifier = tf.keras.layers.Dropout(dropout_rate)(classifier)
-    classifier = tf.keras.layers.Dense(num_classes, activation=None, name='classifier')(classifier)
-    return tf.keras.Model(x, classifier)
+    outputs = encoder(encoder_inputs)
+    net = outputs['pooled_output']
+    net = tf.keras.layers.Dropout(dropout_rate)(net)
+    net = tf.keras.layers.Dense(num_classes, activation=None, name='classifier')(net)
+    return tf.keras.Model(text_input, net)
+
 
 
 def main(args: argparse.Namespace) -> None:
@@ -193,23 +192,23 @@ def main(args: argparse.Namespace) -> None:
 
 
 if __name__ == '__main__':
-    import python_ta
-    python_ta.check_all(config={
-        'extra-imports': [
-            'argparse',
-            'pathlib',
-            'typing',
-            'tensorflow',
-            'tensorflow_hub',
-            'tensorflow_text',
-            'official.nlp',
-            'logger',
-            'utils',
-        ],
-        'allowed-io': ['main'],
-        'max-line-length': 100,
-        'disable': ['R1705', 'C0200']
-    })
+    # import python_ta
+    # python_ta.check_all(config={
+    #     'extra-imports': [
+    #         'argparse',
+    #         'pathlib',
+    #         'typing',
+    #         'tensorflow',
+    #         'tensorflow_hub',
+    #         'tensorflow_text',
+    #         'official.nlp',
+    #         'logger',
+    #         'utils',
+    #     ],
+    #     'allowed-io': ['main'],
+    #     'max-line-length': 100,
+    #     'disable': ['R1705', 'C0200']
+    # })
 
     parser = argparse.ArgumentParser(description='Train a multi-class text classifier '
                                      'using a pretrained BERT model from TF Hubs.')
