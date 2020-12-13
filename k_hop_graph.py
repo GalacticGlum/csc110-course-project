@@ -33,6 +33,7 @@ def build_infinity_hop_graph(embeddings: WordEmbeddings, alpha: Optional[float] 
     """
     graph = nx.Graph()
     logger.info('Generating infinity-hop graph')
+    weights = embeddings.weights.astype(np.float32)
     # Compute the cosine similarity between all pairs of embedding vector.
     similarities = metrics.pairwise.cosine_similarity(embeddings.weights)
     # Filter out similarity scores that are less than the threshold
