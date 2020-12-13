@@ -214,9 +214,9 @@ def main(args: argparse.Namespace) -> None:
     if not args.output_path:
         plt.show()
     else:
-        output_format = args.export_format[1:] if args.export_format.startswith('.') else args.export_format
+        output_format = (args.output_path.suffix or 'png').replace('.', '')
         args.output_path.parent.mkdir(parents=True, exist_ok=True)
-        if output_format == 'latex':
+        if output_format == 'tex' or output_format == 'latex':
             import tikzplotlib
             tikzplotlib.save(args.output_path)
         else:
@@ -263,8 +263,6 @@ if __name__ == '__main__':
                         help='The DPI of the exported file.')
     parser.add_argument('-edpi', '--export-dpi', type=int, default=96,
                         help='The DPI of the exported file.')
-    parser.add_argument('-f', '--export-format', type=str, default='png',
-                        help='The format of the exported file.')
     parser.add_argument('--verbose', action='store_true', help='Whether to log messages.')
     # Word Embeddings location
     parser.add_argument('--checkpoint', dest='checkpoint_directory', type=Path, default=None,
