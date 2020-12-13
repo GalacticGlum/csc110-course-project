@@ -810,21 +810,21 @@ class Word2Vec(tf.keras.Model):
 
 if __name__ == '__main__':
     import python_ta
-    # python_ta.check_all(config={
-    #     'extra-imports': [
-    #         'json',
-    #         'string',
-    #         'itertools',
-    #         'pathlib',
-    #         'collections',
-    #         'typing',
-    #         'numpy',
-    #         'tensorflow',
-    #         'tqdm'
-    #     ],
-    #     'max-line-length': 100,
-    #     'disable': ['R1705', 'C0200', 'E9998']
-    # })
+    python_ta.check_all(config={
+        'extra-imports': [
+            'json',
+            'string',
+            'itertools',
+            'pathlib',
+            'collections',
+            'typing',
+            'numpy',
+            'tensorflow',
+            'tqdm'
+        ],
+        'max-line-length': 100,
+        'disable': ['R1705', 'C0200', 'E9998']
+    })
 
-    # import doctest
-    # doctest.testmod()
+    import doctest
+    doctest.testmod()
