@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from datetime import date
-from typing import Union, Tuple, List
+from typing import Optional, Union, Tuple, List
 import matplotlib.pyplot as plt
 
 from word2vec import Tokenizer
@@ -38,13 +38,15 @@ def plot_similarity_over_time(temporal_embeddings: List[Tuple[date, WordEmbeddin
 
 
 def plot_frequency_over_time(temporal_tokenizers: List[Tuple[date, Tokenizer]],
-                             words: Union[str, List[str]]) -> None:
+                             words: Union[str, List[str]], proportion: Optional[bool] = False) \
+        -> None:
     """Plot the frequency of the given words over time.
     This function does NOT call show on the resultant plot.
 
     Args:
         temporal_tokenizers: A list of 2-tuples containing a date and tokenizer.
         words: One or more words in the vocabulary whose frequency to plot.
+        proportion: Whether to plot the raw frequency, or the proportion.
     """
     # Make words a list (for consistency)
     if not isinstance(words, list):
@@ -56,7 +58,11 @@ def plot_frequency_over_time(temporal_tokenizers: List[Tuple[date, Tokenizer]],
             if word not in tokenizer.vocabulary:
                 continue
             x.append(date)
-            y.append(tokenizer.get_frequency(word))
+            yi = tokenizer.get_frequency(word)
+            if proportion:
+                yi /= tokenizer.corpus_size
+
+            y.append(yi)
         plt.plot_date(x, y, '-o')
 
     def readable_list(seq: List[any]) -> str:
@@ -66,9 +72,13 @@ def plot_frequency_over_time(temporal_tokenizers: List[Tuple[date, Tokenizer]],
         return ', '.join(seq[:-1]) + ', and ' + seq[-1]
 
     word_list = readable_list([f'"{x}"' for x in words])
-    plt.title(f'Mentions of the terms {word_list}')
+
+    variable_label = 'Proportion' if proportion else 'Mentions'
+    plt.title(f'{variable_label} of the terms {word_list}')
     plt.xlabel('Date')
-    plt.ylabel('Number of mentions')
+
+    y_label = 'Proportion' if proportion else 'Number of mentions'
+    plt.ylabel(y_label)
 
 
 if __name__ == '__main__':
@@ -77,8 +87,6 @@ if __name__ == '__main__':
     # temporal_embeddings = []
     temporal_tokenizers = []
     for path in paths:
-        if path.stem == '00001-2018_09_p25_corpus': continue
-
         path_name = path.stem
         path_name = path_name[path_name.find('-') + 1:path_name.find('_p')].replace('_', '-')
 
@@ -100,5 +108,5 @@ if __name__ == '__main__':
         temporal_tokenizers.append((path_date.date(), tokenizer))
 
     # plot_similarity_over_time(temporal_embeddings, 'climate', 'homelessness')
-    plot_frequency_over_time(temporal_tokenizers, 'climate')
+    plot_frequency_over_time(temporal_tokenizers, ['climate_change', 'global_warming', 'disaster'], proportion=True)
     plt.show()
