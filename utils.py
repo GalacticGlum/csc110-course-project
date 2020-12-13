@@ -2,7 +2,7 @@
 
 import re
 import random
-from typing import Optional, Union, Tuple
+from typing import Optional, Union, Tuple, List, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
@@ -172,6 +172,30 @@ def rgb_to_str(colour: Tuple[int, int, int]) -> str:
         - all(0 <= x <= 255 for x in colour)
     """
     return 'rgb({})'.format(','.join(str(x) for x in colour))
+
+
+def list_join(lst: List[Any], conjuction: Optional[str] = 'and',
+              format_func: Optional[callable] = str,
+              oxford_comma: Optional[bool] = True) -> str:
+    """Join a list into a human-readable English sentence.
+
+    Args:
+        lst: The list to join.
+        conjuction: Conjunction word used on the last two items.
+        format_func: A function that takes in a string as input and returns
+            a formatted string.
+        oxford_comma: Whether to use an oxford comma.
+
+    >>> list_join(['David', 'Mario', 'Shon'])
+    David, Mario, and Shon
+    """
+    if not lst:
+        return ''
+    if len(lst) <= 2:
+        return f' {conjuction} '.join(lst)
+
+    comma = ',' if oxford_comma else ''
+    return ', '.join(lst[:-1]) + f'{comma} {conjuction} ' + lst[-1]
 
 
 if __name__ == '__main__':
