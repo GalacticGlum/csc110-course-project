@@ -114,7 +114,6 @@ def build_classifier_model(num_classes: int, dropout_rate: Optional[float] = 0.1
     return tf.keras.Model(text_input, net)
 
 
-
 def main(args: argparse.Namespace) -> None:
     """Main entrypoint for the script."""
     set_seed(args.seed)
