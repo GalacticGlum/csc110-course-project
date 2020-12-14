@@ -5,7 +5,7 @@ import tqdm
 import logging
 import argparse
 from pathlib import Path
-from typing import Set, Optional
+from typing import Tuple, Set, Optional, Generator
 
 import numpy as np
 import networkx as nx
@@ -21,30 +21,73 @@ from curved_edges import curved_edges
 from logger import logger
 from word_embeddings import WordEmbeddings
 
+def batched_cosine_similarity(x: np.ndarray, y: Optional[np.ndarray] = None,
+                              batch_size: Optional[int] = 512) \
+        -> Generator[Tuple[int, np.ndarray], None, None]:
+    """Computes the pairwise cosine similarity of matrices in a memory efficient manner by
+    batching computations. Yields a 2-tuple containing the zero-based row offset and a
+    cosine similarity matrix of shape (batch_size, None).
 
-def build_infinity_hop_graph(embeddings: WordEmbeddings, alpha: Optional[float] = 0.50) \
-        -> nx.Graph:
+    Args:
+        - x: first matrix.
+        - y: second matrix.
+        - batch_size: number of operations to do at once.
+
+    Preconditions:
+        - x.shape[1] == y.shape[1]
+    """
+    # If y is not specified, use the input matrix.
+    # In this case, we are computing the pairwise cosine similarity
+    # for all rows of the input matrix.
+    if y is None:
+        y = x
+
+    for row_index in range(0, int(x.shape[0] / batch_size) + 1):
+        start = row_index * batch_size
+        end = min([(row_index + 1) * batch_size, x.shape[0]])
+        if end <= start:
+            break
+
+        # Compute a chunk of the similarity matrix.
+        rows = x[start: end]
+        similarity = metrics.pairwise.cosine_similarity(rows, y)
+        yield (start, similarity)
+
+
+def build_infinity_hop_graph(embeddings: WordEmbeddings, alpha: Optional[float] = 0.50,
+                             batch_size: Optional[int] = 256) -> nx.Graph:
     """Builds the infinity-hop graph for a word embeddings space.
 
     Args:
         embeddings: The word embeddings to generate the graph for.
         alpha: The similarity threshold. Words that have a cosine similarity
             of at least this threshold are kept, and the rest are discarded.
+        batch_size: Number of rows to batch in a single operation when computing
+            the cosine similarity matrix.
     """
     graph = nx.Graph()
     logger.info('Generating infinity-hop graph')
     weights = embeddings.weights.astype(np.float32)
     # Compute the cosine similarity between all pairs of embedding vector.
-    similarities = metrics.pairwise.cosine_similarity(embeddings.weights)
-    # Filter out similarity scores that are less than the threshold
-    pairs = np.argwhere(similarities >= alpha)
+    similarity_batches = batched_cosine_similarity(
+        embeddings.weights,
+        batch_size=batch_size
+    )
 
     # Generate the infinity-hop network
-    for pair in tqdm.tqdm(pairs):
-        i, j = pair
-        if i == j: continue
-        # The weight of the edge is the cosine similary.
-        graph.add_edge(i, j, weight=similarities[i][j])
+    num_batches = int(embeddings.weights.shape[0] / batch_size) + 1
+    for row_offset, similarities in tqdm.tqdm(similarity_batches, total=num_batches):
+        # Filter out similarity scores that are less than the threshold
+        pairs = np.argwhere(similarities >= alpha)
+        for pair in pairs:
+            i, j = pair
+            if i == j: continue
+
+            # The weight of the edge is the cosine similary.
+            graph.add_edge(
+                i + row_offset, j,
+                weight=similarities[i][j]
+            )
 
     return graph
 
@@ -112,6 +155,7 @@ def draw_k_hop_graph(embeddings: WordEmbeddings, target_word: str,
     if alpha is None:
         _, similarity  = embeddings.most_similar(target_word, k=1)[0]
         alpha = similarity - 0.05
+        logger.info('No alpha threshold provided. Using alpha = {}'.format(alpha))
 
     graph = build_k_hop_graph(embeddings, target_word, k, alpha=alpha)
 
