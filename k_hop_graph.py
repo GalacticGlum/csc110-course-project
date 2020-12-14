@@ -135,7 +135,11 @@ def draw_k_hop_graph(embeddings: WordEmbeddings, target_word: str,
                      min_node_size: Optional[float] = 20,
                      max_node_size: Optional[float] = 120,
                      min_font_size: Optional[float] = 6,
-                     max_font_size: Optional[float] = 24) -> None:
+                     max_font_size: Optional[float] = 24,
+                     node_alpha: Optional[float] = 1,
+                     edge_alpha: Optional[float] = 0.05,
+                     target_word_label_colour: Optional[str] = 'black',
+                     community_colour_map: Optional[str] = 'plasma') -> None:
     """Draw the k-hop graph for the given word embeddings and interest word.
     This function DOES NOT show the matplotlib plot.
 
@@ -151,6 +155,11 @@ def draw_k_hop_graph(embeddings: WordEmbeddings, target_word: str,
         max_node_size: The maximum size of a node, in pixels.
         min_font_size: The minimum size of a label, in pixels.
         max_font_size: The maximum size of a label, in pixels.
+        node_alpha: The alpha/transparency to draw nodes with.
+        edge_alpha: The alpha/transparency to draw edges with.
+        target_word_label_colour: The colour of the target word label.
+            Makes the target word stand out. Useless when there are many words.
+        community_colour_map: The colour map to use when assigning colours to communities.
     """
     if alpha is None:
         _, similarity  = embeddings.most_similar(target_word, k=1)[0]
@@ -179,7 +188,7 @@ def draw_k_hop_graph(embeddings: WordEmbeddings, target_word: str,
     positions = forceatlas2.forceatlas2_networkx_layout(graph)
 
     logger.info('Rendering graph with matplotlib')
-    cmap = cm.get_cmap('winter', max(partition.values()) + 1)
+    cmap = cm.get_cmap(community_colour_map, max(partition.values()) + 1)
 
     degrees = dict(graph.degree)
     max_degree = max(degrees.values())
@@ -199,21 +208,26 @@ def draw_k_hop_graph(embeddings: WordEmbeddings, target_word: str,
         node_size=node_size,
         cmap=cmap,
         node_color=list(partition.values()),
-        alpha=1
+        alpha=node_alpha
     )
 
     # Draw the edges with a bezier curve
     curves = curved_edges(graph, positions)
+    # Remove nan values
+    curves = np.nan_to_num(curves)
+
     # Assign a colour to each edge, based on the community of the source node.
     edge_color =  [cmap(partition[a]) for a, _ in graph.edges]
-    edge_lines = LineCollection(curves, color=edge_color, cmap=cmap, alpha=0.05, linewidths=1)
+    edge_lines = LineCollection(curves, color=edge_color, cmap=cmap, alpha=edge_alpha, linewidths=1)
     plt.gca().add_collection(edge_lines)
 
     # Draw node labels (words)
     for i, (x, y) in positions.items():
         # The size of the label is proportional to the degree of the node.
-        fontsize = max(max_font_size * size_multipliers[i], min_font_size)
-        plt.text(x, y, embeddings.words[i], fontsize=fontsize, ha='center', va='center')
+        fontsize = max(max_font_size * size_multipliers[i]**4, min_font_size)
+        word = embeddings.words[i]
+        colour = target_word_label_colour if word == target_word else 'black'
+        plt.text(x, y, word, fontsize=fontsize, ha='center', va='center', color=colour)
 
 
 def main(args: argparse.Namespace) -> None:
@@ -253,7 +267,11 @@ def main(args: argparse.Namespace) -> None:
         min_node_size=args.min_node_size,
         max_node_size=args.max_node_size,
         min_font_size=args.min_font_size,
-        max_font_size=args.max_font_size
+        max_font_size=args.max_font_size,
+        node_alpha=args.node_alpha,
+        edge_alpha=args.edge_alpha,
+        target_word_label_colour=args.target_word_label_colour,
+        community_colour_map=args.colour_map
     )
 
     # Show the plot, or output it, depending on the mode.
@@ -337,4 +355,11 @@ if __name__ == '__main__':
                         help='The minimum size of a label.')
     parser.add_argument('--max-font-size', type=float, default=24,
                         help='The minimum size of a label.')
+    parser.add_argument('--node-alpha', type=float, default=1,
+                        help='The alpha/transparency to draw nodes with.')
+    parser.add_argument('--edge-alpha', type=float, default=0.15,
+                        help='The alpha/transparency to draw edges with.')
+    parser.add_argument('--target-word-label-colour', type=str, default='black',
+                        help='The colour of the target word label.')
+    parser.add_argument('-cmap', '--colour-map', type=str, default='plasma')
     main(parser.parse_args())
