@@ -28,7 +28,10 @@ from word_embeddings import WordEmbeddings
 
 
 def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray,
-                            z: Optional[np.ndarray] = None) -> go.Figure:
+                            z: Optional[np.ndarray] = None,
+                            marker_colours: Optional[List[str]] = None,
+                            marker_opacity: Optional[float] = 0.25,
+                            marker_size: Optional[float] = 4.5) -> go.Figure:
     """Make a scatter plot given the embedding weight data.
     Return a 3D scatter plot if three dimensions were given, or a 2D scatter plot otherwise.
 
@@ -37,16 +40,28 @@ def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray,
         x: A numpy array containing the x-coordinates.
         y: A numpy array containing the y-coordinates.
         z: A numpy array containing the z-coordinates.
+        marker_colours: The colours of the points. The i-th element of this list corresponds
+            to the colour of the market with coordinates (x[i], y[i], z[i]).
+        marker_opacity: The opacity of the markers.
+        marker_size: The size of the markers.
+    Preconditions:
+        - len(x) == len(y)
+        - z is None or len(x) == len(z)
+        - marker_colours is None or len(x) == len(marker_colours)
     """
+    DEFAULT_MARKER_COLOUR = 'rgb(1, 135, 75)'
+    if marker_colours is None:
+        marker_colours = [DEFAULT_MARKER_COLOUR] * len(words)
+
     # Create the figure for displaying the embedding points
     if z is not None:
         embedding_fig = go.Figure(data=[go.Scatter3d(
             x=x, y=y, z=z,
             mode='markers',
             marker={
-                'size': 4.5,
-                'opacity': 0.25,
-                'color': ['rgb(1, 135, 75)'] * len(words)
+                'size': marker_size,
+                'opacity': marker_opacity,
+                'color': marker_colours
             },
             hovertemplate='<b>%{text}</b><br><br>x: %{x}<br>y: %{y}<br>z: %{z}<extra></extra>',
             text=words
@@ -294,18 +309,39 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         pca, weights = embeddings.pca()
         words = embeddings.words
 
+        # Marker settings
+        marker_colours = None
+        marker_opacity = 0.25
+        marker_size = 4.5
+
+        # Get the callback context (from where was it called?)
         ctx = dash.callback_context
         triggered = ctx.triggered[0]
         # If the triggered prop_id contains 'n_clicks' then it was triggered
         # by a search result list item. Otherwise, it was triggered by clicking on the graph.
         if triggered['prop_id'] == 'isolate-points-button.n_clicks':
             # Isolate the selected word by finding its neighbours...
-            neighbours = embeddings.most_similar(selected_word, k=100)
-            words = [selected_word] + [word for word, _ in neighbours]
+            similarities = embeddings.most_similar(selected_word, k=100)
+            # Add the original word to the list so that it is included in the plot.
+            similarities += [(selected_word, 1.0)]
+            words = [word for word, _ in similarities]
+
             # Take only the weights of the neighbours...
             weights = np.array([embeddings.get_vector(word) for word in words])
             # Enable the show all data button
             show_all_data_button_disabled = False
+
+            # Override the colours on the plot.
+            MOST_DIFFERENT_COLOUR = (255, 252, 0)
+            MOST_SIMILAR_COLOUR = (255, 0, 0)
+
+            marker_colours = [
+                rgb_to_str(rgb_lerp(MOST_DIFFERENT_COLOUR, MOST_SIMILAR_COLOUR, similarity))
+                for _, similarity in similarities
+            ]
+
+            marker_opacity = 0.6
+            marker_size = 10
         elif triggered['prop_id'] == 'show-all-data-button.n_clicks':
             show_all_data_button_disabled = not show_all_data_button_disabled
 
@@ -324,7 +360,13 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         axes = np.squeeze(np.split(weights, split_indices, axis=1))
 
         # Update the embedding graph
-        scatter = _make_embedding_scatter(words, *axes)
+        scatter = _make_embedding_scatter(
+            words, *axes,
+            marker_colours=marker_colours,
+            marker_opacity=marker_opacity,
+            marker_size=marker_size
+        )
+
         # Changing the value of uirevision causes the graph to update!
         # So, let's initialise it to some unique value. This will ensure
         # that Dash updates the user state for the graph.
