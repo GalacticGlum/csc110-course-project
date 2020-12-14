@@ -187,7 +187,7 @@ def main(args: argparse.Namespace) -> None:
     logger.info('Accuracy: {}'.format(accuracy))
 
     # Save final model
-    model.save(logdir / 'model_final.hd5')
+    model.save(logdir / 'model_final')
 
 
 if __name__ == '__main__':
