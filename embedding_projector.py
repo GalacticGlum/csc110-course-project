@@ -40,7 +40,7 @@ def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray,
     """
     # Create the figure for displaying the embedding points
     if z is not None:
-        embedding_fig = go.FigureWidget(data=[go.Scatter3d(
+        embedding_fig = go.Figure(data=[go.Scatter3d(
             x=x, y=y, z=z,
             mode='markers',
             marker={
@@ -168,6 +168,7 @@ def _make_layout(embeddings_list: List[WordEmbeddings]) -> object:
                                             className='my-4',
                                             disabled=True)])
                     ], no_gutters=True),
+                    html.Div(id='selected-word-state', style={'display': 'none'}),
                     dbc.Tabs([
                         dbc.Tab(tab_id='search-tab', children=[
                             html.Div([
@@ -188,7 +189,7 @@ def _make_layout(embeddings_list: List[WordEmbeddings]) -> object:
                             tab_id='selected-word-tab',
                             label='Selection',
                             disabled=True
-                        )
+                        ),
                     ], id='analysis-tabs', active_tab='search-tab')
                 ]),
             ]), width=2)
@@ -245,15 +246,27 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         )
 
     @app.callback([Output('embedding-graph', 'figure'),
-                   Output('pca-variance-label', 'children')],
+                   Output('pca-variance-label', 'children'),
+                   Output('show-all-data-button', 'disabled')],
                   [Input('x-component-dropdown', 'value'),
                    Input('y-component-dropdown', 'value'),
                    Input('z-component-dropdown', 'value'),
                    Input('use-z-component', 'value'),
-                   Input('update-embeddings-signal', 'children')],
-                  State('embeddings-dropdown', 'value'))
+                   Input('update-embeddings-signal', 'children'),
+                   Input('isolate-points-button', 'n_clicks'),
+                   Input('clear-selection-button', 'n_clicks'),
+                   Input('show-all-data-button', 'n_clicks')],
+                  [State('embeddings-dropdown', 'value'),
+                   State('embedding-graph', 'figure'),
+                   State('pca-variance-label', 'children'),
+                   State('selected-word-state', 'children'),
+                   State('show-all-data-button', 'disabled')])
     def components_changed(x_component: int, y_component: int, z_component: int,
-                           use_z_component_values: list, signal: object, index: int) \
+                           use_z_component_values: list, signal: object,
+                           isolate_points_n_clicks: int, clear_search_selection_n_clicks: int,
+                           show_all_data_button_n_clicks: int, index: int,
+                           current_embedding_figure: dash.Figuure, pca_variance_label: str,
+                           selected_word: str, show_all_data_button_disabled: bool) \
             -> Tuple[dash.Figure, str]:
         """Triggered when the PCA components are changed.
         Return the updated word embedding graph.
@@ -265,10 +278,37 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
             use_z_component_values: A list of values for the use_z_component
                 checklist. Since this checklist contains a single element,
                 the list is empty when the checklist is not toggled.
+            isolate_points_n_clicks: The number of times the isolate points button has
+                been clicked.
+            clear_search_selection_n_clicks: The number of times the clear search selection
+                button has been clicked.
+            show_all_data_button_n_clicks: The number of times the show all data button has
+                been clicked.
             index: The index of the currently selected embeddings.
+            current_embedding_figure: The current embedding figure.
+            pca_variance_label: The current PCA variance label.
+            selected_word: The currently selected word.
         """
+        # Load the embeddings and PCA reduced weights.
         embeddings = embeddings_list[index]
         pca, weights = embeddings.pca()
+        words = embeddings.words
+
+        ctx = dash.callback_context
+        triggered = ctx.triggered[0]
+        # If the triggered prop_id contains 'n_clicks' then it was triggered
+        # by a search result list item. Otherwise, it was triggered by clicking on the graph.
+        if triggered['prop_id'] == 'isolate-points-button.n_clicks':
+            # Isolate the selected word by finding its neighbours...
+            neighbours = embeddings.most_similar(selected_word, k=100)
+            words = [selected_word] + [word for word, _ in neighbours]
+            # Take only the weights of the neighbours...
+            weights = np.array([embeddings.get_vector(word) for word in words])
+            # Enable the show all data button
+            show_all_data_button_disabled = False
+        elif triggered['prop_id'] == 'show-all-data-button.n_clicks':
+            show_all_data_button_disabled = not show_all_data_button_disabled
+
         # Select the components
         components = [x_component, y_component]
         if use_z_component_values:
@@ -282,17 +322,20 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         split_indices = list(range(1, weights.shape[-1]))
         # Split the matrix into separate vectors containing components
         axes = np.squeeze(np.split(weights, split_indices, axis=1))
+
         # Update the embedding graph
-        scatter = _make_embedding_scatter(embeddings.words, *axes)
+        scatter = _make_embedding_scatter(words, *axes)
+        # Changing the value of uirevision causes the graph to update!
+        # So, let's initialise it to some unique value. This will ensure
+        # that Dash updates the user state for the graph.
+        scatter.update_layout(uirevision=str(uuid.uuid4()))
 
         # Compute the total variance described the chosen components.
         # This is the sum of the variance described by each component.
         total_variance = np.sum(np.take(pca.explained_variance_ratio_, components))
+        label = f'Total variance described: {total_variance * 100:.2f}%.'
 
-        return (
-            scatter,
-            f'Total variance described: {total_variance * 100:.2f}%.'
-        )
+        return (scatter, label, show_all_data_button_disabled)
 
     @app.callback(Output('z-component-dropdown', 'disabled'),
                   Input('use-z-component', 'value'))
@@ -308,14 +351,18 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
 
     @app.callback([Output('word-search-results', 'children'),
                    Output('word-search-matches', 'children')],
-                  Input('word-search-input', 'value'),
+                  [Input('word-search-input', 'value'),
+                   Input('clear-selection-button', 'n_clicks')],
                   State('embeddings-dropdown', 'value'))
-    def on_search_changed(search_term: str, index: int) -> Tuple[List[dbc.ListGroupItem], str]:
+    def on_search_changed(search_term: str, n_clicks: int, index: int) -> Tuple[List[dbc.ListGroupItem], str]:
         """Triggered when the search box changes."""
         # The number of search results to show.
-        SHOW_FIRST_N = 25
+        SHOW_FIRST_N = 100
 
-        if index is None or not search_term:
+        ctx = dash.callback_context
+        clear_selection_triggered = n_clicks is not None and n_clicks > 0 and \
+            ctx.triggered[0]['prop_id'] == 'clear-selection-button.n_clicks'
+        if index is None or not search_term or clear_selection_triggered:
             return ([], '')
 
         embeddings = embeddings_list[index]
@@ -350,7 +397,6 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
                   Input('clear-selection-button', 'n_clicks'))
     def clear_search_selection(n_clicks: int) -> str:
         """Triggered when the clear search selection button is clicked.
-
         Args:
             n_clicks: The number of times the button was clicked.
         """
@@ -359,20 +405,26 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
     @app.callback([Output('selected-word-tab', 'children'),
                    Output('selected-word-tab', 'disabled'),
                    Output('analysis-tabs', 'active_tab'),
-                   Output('clear-selection-button', 'disabled')],
+                   Output('clear-selection-button', 'disabled'),
+                   Output('isolate-points-button', 'disabled'),
+                   Output('selected-word-state', 'children')],
                   [Input('embedding-graph', 'clickData'),
-                   Input({'type': 'search-result', 'index': ALL, 'word': ALL}, 'n_clicks')],
+                   Input({'type': 'search-result', 'index': ALL, 'word': ALL}, 'n_clicks'),
+                   Input('clear-selection-button', 'n_clicks')],
                   State('embeddings-dropdown', 'value'))
-    def update_word_selection(click_data: dict, n_clicks: List[int], index: int) -> None:
+    def update_word_selection(click_data: dict, n_clicks: List[int], clear_selection_n_clicks: int,
+                              index: int) -> None:
         """Triggered when a new word is selected.
 
         Args:
             n_clicks: The number of times each search result list item has been clicked.
             click_data: Information about the point the user clicked on the embedding graph.
+            clear_selection_n_clicks: The number of times the clear search selection button
+                has been clicked.
             index: The index of the currently selected word embeddigns object.
         """
         # The default/empty return value.
-        DEFAULT = ([], True, 'search-tab', True)
+        DEFAULT = ([], True, 'search-tab', True, True, '')
 
         ctx = dash.callback_context
         # If the context is None, then we can't trace the event, so return.
@@ -380,6 +432,15 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
             return DEFAULT
 
         triggered = ctx.triggered[0]
+
+        # if the user clicked on the clear search selection button, then we should clear the tab.
+        clear_selection_triggered = clear_selection_n_clicks is not None \
+            and clear_selection_n_clicks > 0 \
+            and ctx.triggered[0]['prop_id'] == 'clear-selection-button.n_clicks'
+
+        if clear_selection_triggered:
+            return DEFAULT
+
         # If the triggered prop_id contains 'n_clicks' then it was triggered
         # by a search result list item. Otherwise, it was triggered by clicking on the graph.
         if 'n_clicks' in triggered['prop_id']:
@@ -451,7 +512,7 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
             )
         ])
 
-        return (tab_contents, False, 'selected-word-tab', False)
+        return (tab_contents, False, 'selected-word-tab', False, False, selected_word)
 
 
 def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
@@ -466,7 +527,8 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
     external_stylesheets = [dbc.themes.BOOTSTRAP]
     app = dash.Dash(
         __name__, external_stylesheets=external_stylesheets,
-        title='Embedding Projector'
+        title='Embedding Projector',
+        update_title=None
     )
 
     # Setup the app
