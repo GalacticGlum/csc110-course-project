@@ -31,7 +31,8 @@ def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray,
                             z: Optional[np.ndarray] = None,
                             marker_colours: Optional[List[str]] = None,
                             marker_opacity: Optional[float] = 0.25,
-                            marker_size: Optional[float] = 4.5) -> go.Figure:
+                            marker_size: Optional[float] = 4.5,
+                            labels: Optional[bool] = False) -> go.Figure:
     """Make a scatter plot given the embedding weight data.
     Return a 3D scatter plot if three dimensions were given, or a 2D scatter plot otherwise.
 
@@ -44,6 +45,7 @@ def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray,
             to the colour of the market with coordinates (x[i], y[i], z[i]).
         marker_opacity: The opacity of the markers.
         marker_size: The size of the markers.
+        labels: Whether to add labels to the markers.
     Preconditions:
         - len(x) == len(y)
         - z is None or len(x) == len(z)
@@ -72,12 +74,27 @@ def _make_embedding_scatter(words: List[str], x: np.ndarray, y: np.ndarray,
             'backgroundcolor': 'white',
             'gridcolor': 'rgb(217, 217, 217)'
         }
+
+        annotations = []
+        if labels:
+            annotations = [{
+                'showarrow': False,
+                'x': x[i],
+                'y': y[i],
+                'z': z[i] if z is not None else None,
+                'text': word,
+                'xanchor': 'left',
+                'xshift': 10,
+                'opacity': 0.7
+            } for i, word in enumerate(words)]
+
         embedding_fig.update_layout(
             scene={
                 'xaxis': axis_values,
                 'yaxis': axis_values,
                 'zaxis': axis_values,
-                'aspectmode': 'cube'
+                'aspectmode': 'cube',
+                'annotations': annotations
             }
         )
     else:
@@ -313,6 +330,7 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
         marker_colours = None
         marker_opacity = 0.25
         marker_size = 4.5
+        display_labels = False
 
         # Get the callback context (from where was it called?)
         ctx = dash.callback_context
@@ -340,8 +358,10 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
                 for _, similarity in similarities
             ]
 
+            # Override marker settings
             marker_opacity = 0.6
             marker_size = 10
+            display_labels = True
         elif triggered['prop_id'] == 'show-all-data-button.n_clicks':
             show_all_data_button_disabled = not show_all_data_button_disabled
 
@@ -364,7 +384,8 @@ def _make_callbacks(app: dash.Dash, embeddings_list: List[WordEmbeddings]) -> No
             words, *axes,
             marker_colours=marker_colours,
             marker_opacity=marker_opacity,
-            marker_size=marker_size
+            marker_size=marker_size,
+            labels=display_labels
         )
 
         # Changing the value of uirevision causes the graph to update!
