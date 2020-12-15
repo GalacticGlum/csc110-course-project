@@ -49,8 +49,8 @@ class WordEmbeddings:
     #   - _suffix_tree: A suffix tree for fast searching of the vocabulary.
     #   - _nearest_neighbours: A nearest neighbours model for finding most similar embeddings.
     _vocabulary: Dict[str, int]
-    _pca: decomposition.PCA
-    _reduced_weights: np.ndarray
+    _pca: Optional[decomposition.PCA] = None
+    _reduced_weights: Optional[np.ndarray] = None
     _all_words: str
     _suffix_tree: SuffixTree
     _nearest_neighbours: neighbors.NearestNeighbors

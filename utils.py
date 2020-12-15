@@ -175,15 +175,12 @@ def rgb_to_str(colour: Tuple[int, int, int]) -> str:
 
 
 def list_join(lst: List[Any], conjuction: Optional[str] = 'and',
-              format_func: Optional[callable] = str,
               oxford_comma: Optional[bool] = True) -> str:
     """Join a list into a human-readable English sentence.
 
     Args:
         lst: The list to join.
         conjuction: Conjunction word used on the last two items.
-        format_func: A function that takes in a string as input and returns
-            a formatted string.
         oxford_comma: Whether to use an oxford comma.
 
     >>> list_join(['David', 'Mario', 'Shon'])
