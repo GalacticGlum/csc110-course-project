@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Tuple, Set, Optional, Generator, Union
 
 import numpy as np
+import tikzplotlib
 import networkx as nx
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
@@ -311,7 +312,6 @@ def visualise_k_hop_graph(target_word: str,
         output_format = (output_path.suffix or 'png').replace('.', '')
         output_path.parent.mkdir(parents=True, exist_ok=True)
         if output_format == 'tex' or output_format == 'latex':
-            import tikzplotlib
             tikzplotlib.save(output_path)
         else:
             plt.savefig(output_path, dpi=export_dpi)

@@ -1,6 +1,7 @@
 """Functionality for performing temporal analysis on a corpus."""
 
 from pathlib import Path
+from dateutil.parser import parse
 from datetime import date, datetime
 from typing import Optional, Union, Tuple, List
 
@@ -14,6 +15,7 @@ from utils import list_join
 from word2vec import Tokenizer
 from train_text_classifier import build_classifier_model
 from word_embeddings import WordEmbeddings, cosine_similarity
+
 
 def plot_similarity_over_time(temporal_embeddings: List[Tuple[date, WordEmbeddings]],
                               word_a: str, word_b: str) -> None:
@@ -144,70 +146,40 @@ def get_sentiment_over_time(temporal_tweets: List[Tuple[datetime, List[str]]],
         results.append((timestamp, yi))
     return results
 
+
+# def random_sampler(filename, k):
+#     sample = []
+#     with open(filename, 'rb') as f:
+#         f.seek(0, 2)
+#         filesize = f.tell()
+
+#         random_set = sorted(random.sample(range(filesize), k))
+
+#         for i in range(k):
+#             f.seek(random_set[i])
+#             # Skip current line (because we might be in the middle of a line)
+#             f.readline()
+#             # Append the next line to the sample set
+#             sample.append(f.readline().rstrip())
+
+#     return sample
+
+
 # if __name__ == '__main__':
 #     from dateutil.parser import parse
-#     paths = Path('./output/word2vec').glob('00001-20*')
-#     # temporal_embeddings = []
-#     temporal_tokenizers = []
-#     for path in paths:
-#         path_name = path.stem
-#         path_name = path_name[path_name.find('-') + 1:path_name.find('_p')].replace('_', '-')
+#     import random
+#     files = Path('./data/twitter/').glob('20*.txt')
+#     temporal_tweets = []
+#     for file in files:
+#         print(file)
+#         filename = file.stem
+#         filename = filename[filename.find('-') + 1:filename.find('_p')].replace('_', '-')
+#         file_date = parse(filename, fuzzy=True).replace(day=1)
 
-#         path_date = parse(path_name, fuzzy=True).replace(day=1)
+#         # Get tweets (1K per month to run sentiment analysis)
+#         tweets = random_sampler(file, k=1000)
+#         temporal_tweets.append((file_date, tweets))
 
-#         # Load the embeddings
-#         # embeddings = WordEmbeddings(
-#         #     path / 'proj_weights.npy',
-#         #     path / 'vocab.txt',
-#         #     suffix_tree=False,
-#         #     nearest_neighbours=False
-#         # )
-
-#         # Load the tokenizer
-#         tokenizer = Tokenizer()
-#         tokenizer.load(path / 'tokenizer.json')
-
-#         # temporal_embeddings.append((path_date.date(), embeddings))
-#         temporal_tokenizers.append((path_date.date(), tokenizer))
-
-#     # plot_similarity_over_time(temporal_embeddings, 'climate', 'homelessness')
-#     plot_frequency_over_time(temporal_tokenizers, ['climate_change', 'global_warming', 'disaster'], proportion=True)
-#     plt.show()
-
-
-def random_sampler(filename, k):
-    sample = []
-    with open(filename, 'rb') as f:
-        f.seek(0, 2)
-        filesize = f.tell()
-
-        random_set = sorted(random.sample(range(filesize), k))
-
-        for i in range(k):
-            f.seek(random_set[i])
-            # Skip current line (because we might be in the middle of a line)
-            f.readline()
-            # Append the next line to the sample set
-            sample.append(f.readline().rstrip())
-
-    return sample
-
-
-if __name__ == '__main__':
-    from dateutil.parser import parse
-    import random
-    files = Path('./data/twitter/').glob('20*.txt')
-    temporal_tweets = []
-    for file in files:
-        print(file)
-        filename = file.stem
-        filename = filename[filename.find('-') + 1:filename.find('_p')].replace('_', '-')
-        file_date = parse(filename, fuzzy=True).replace(day=1)
-
-        # Get tweets (1K per month to run sentiment analysis)
-        tweets = random_sampler(file, k=1000)
-        temporal_tweets.append((file_date, tweets))
-
-    model = tf.saved_model.load('output/classifier/00003-climate_change_sentiment/model_final')
-    x = get_sentiment_over_time(temporal_tweets, model=model)
-    print(x)
+#     model = tf.saved_model.load('output/classifier/00003-climate_change_sentiment/model_final')
+#     x = get_sentiment_over_time(temporal_tweets, model=model)
+#     print(x)

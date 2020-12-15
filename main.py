@@ -7,6 +7,7 @@ from word_embeddings import WordEmbeddings
 from k_hop_graph import visualise_k_hop_graph
 from embedding_projector import embedding_projector
 
+
 def run_embedding_projector(root_directory: Union[str, Path]) -> None:
     """Run the embedding projector on ALL the trained embeddings in the output/word2vec folder.
 
@@ -26,12 +27,12 @@ def run_embedding_projector(root_directory: Union[str, Path]) -> None:
 
 
 if __name__ == '__main__':
-    # For this to work, you need AT LEAST ONE trained embeddings file
-    # (i.e. a proj_weights.npy and vocab.txt pair).
-    #
-    # For a minimal working example, download a subset of the trained data from
-    # the link provided in the paper.
+    """For this to work, you need AT LEAST ONE trained embeddings file
+    (i.e. a proj_weights.npy and vocab.txt pair).
 
+    For a minimal working example, download a subset of the trained data from
+    the link provided in the paper.
+    """
     # Run the embedding projector on all the embeddings in the output/word2vec folder.
     # NOTE: Loading the embeddings may take a bit. Once they have been loaded in,
     # and the server is running, navigate to http://localhost:5006/
