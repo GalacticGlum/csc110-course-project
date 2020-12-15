@@ -66,5 +66,7 @@ if __name__ == '__main__':
     #     # interest and any other word in the vocab, then the graph will be empty! The word
     #     # of interest will not be a node of the graph, so there there is no path to it.
     #     alpha=0.89,
-    #     # output_path='./output/k_hop/romeo_2_hop.png'  # Uncomment me to save to file!
+    #     # output_path='./output/k_hop/romeo_2_hop.png'  # Uncomment me to save to file!,
+    #     # Setting verbose to True enables logging, which is nice for progress updates!
+    #     verbose=True
     # )
