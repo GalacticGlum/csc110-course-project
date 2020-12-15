@@ -50,21 +50,21 @@ if __name__ == '__main__':
     # supported (png, jpeg, svg, tex to name a few), which are determined by the extension of
     # the output_path.
 
-    visualise_k_hop_graph(
-        'romeo',
-        checkpoint='output/word2vec/00001-shakespeare',
-        # The similarity score threshold. A lower value will produce more complex/dense graphs.
-        # NOTE: alpha is a very fickle parameter. Small changes in alpha (+/- 0.01) can cause
-        # reasonably large changes in the resultant k-hop graph. Experimentation is key!
-        #
-        # Alternatively, you may omit the alpha parameter entirely, either by commenting
-        # it out or setting it to None. In this case, a reasonable default will be computed
-        # based on the given target word and embeddings. For new words of interest, we recommend
-        # starting with the default and then tuning from there.
-        #
-        # WARNING: If alpha is > than the maximum pairwise cosine similarity between the word of
-        # interest and any other word in the vocab, then the graph will be empty! The word
-        # of interest will not be a node of the graph, so there there is no path to it.
-        alpha=0.89,
-        # output_path='./output/k_hop/romeo_2_hop.png'  # Uncomment me to save to file!
-    )
+    # visualise_k_hop_graph(
+    #     'romeo',
+    #     checkpoint='output/word2vec/00001-shakespeare',
+    #     # The similarity score threshold. A lower value will produce more complex/dense graphs.
+    #     # NOTE: alpha is a very fickle parameter. Small changes in alpha (+/- 0.01) can cause
+    #     # reasonably large changes in the resultant k-hop graph. Experimentation is key!
+    #     #
+    #     # Alternatively, you may omit the alpha parameter entirely, either by commenting
+    #     # it out or setting it to None. In this case, a reasonable default will be computed
+    #     # based on the given target word and embeddings. For new words of interest, we recommend
+    #     # starting with the default and then tuning from there.
+    #     #
+    #     # WARNING: If alpha is > than the maximum pairwise cosine similarity between the word of
+    #     # interest and any other word in the vocab, then the graph will be empty! The word
+    #     # of interest will not be a node of the graph, so there there is no path to it.
+    #     alpha=0.89,
+    #     # output_path='./output/k_hop/romeo_2_hop.png'  # Uncomment me to save to file!
+    # )
