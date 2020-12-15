@@ -14,10 +14,12 @@ internetarchive
 
 # Data processing and machine learning
 contractions>0.0.18
-tensorflow-text
 tensorflow
-tf-models-official
 sklearn
+
+# NOTE: tensorflow-text and tf-models-official are only required for TRAINING the BERT model.
+# tensorflow-text
+# tf-models-official
 
 # For string searching
 suffix_trees
