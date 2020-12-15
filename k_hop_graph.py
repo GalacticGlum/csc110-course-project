@@ -105,6 +105,13 @@ def build_k_hop_graph(embeddings: WordEmbeddings, target_word: str,
         alpha: The similarity threshold. Words that have a cosine similarity
             of at least this threshold are kept, and the rest are discarded.
     """
+    # Verify the alpha threshold is <= max(similarity between interest word).
+    max_alpha = embeddings.most_similar(target_word, k=1)[0][1]
+    if alpha > max_alpha:
+        raise ValueError('Alpha threshold too high! The word of interest was not included '
+                         'in the graph. For the given target word, '
+                         '\'{}\', alpha can be AT MOST {}!'.format(target_word, max_alpha))
+
     graph = build_infinity_hop_graph(embeddings, alpha)
 
     # Get the word index of the word of interest.
@@ -256,13 +263,17 @@ def visualise_k_hop_graph(target_word: str,
     If output_path is specified, then no preview window is drawn.
     """
     # Ensure that at least on data argument was provided
-    if checkpoint is None weights_filepath is None and vocab_filepath is None:
+    if checkpoint is None and weights_filepath is None and vocab_filepath is None:
         logger.error('One of checkpoint / (weights-filepath and vocab-filepath) is required!')
         exit(1)
 
     if checkpoint is not None:
+        checkpoint = Path(checkpoint)
         weights_filepath = checkpoint / 'proj_weights.npy'
         vocab_filepath = checkpoint / 'vocab.txt'
+    else:
+        weights_filepath = Path(weights_filepath)
+        vocab_filepath = Path(vocab_filepath)
 
     if not verbose:
         logger.setLevel(logging.ERROR)
@@ -295,6 +306,8 @@ def visualise_k_hop_graph(target_word: str,
     if not output_path:
         plt.show()
     else:
+        output_path = Path(output_path)
+
         output_format = (output_path.suffix or 'png').replace('.', '')
         output_path.parent.mkdir(parents=True, exist_ok=True)
         if output_format == 'tex' or output_format == 'latex':

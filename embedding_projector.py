@@ -604,7 +604,11 @@ def _make_app(embeddings_list: List[WordEmbeddings]) -> dash.Dash:
 def embedding_projector(embeddings_list: List[WordEmbeddings],
                         debug: Optional[bool] = False,
                         port: Optional[int] = 5006) -> None:
-    """Start the embedding projector given word embeddings."""
+    """Start the embedding projector given word embeddings.
+
+    Preconditions:
+        - len(embeddings_list) > 0
+    """
     app = _make_app(embeddings_list)
     app.run_server(debug=debug, port=port)
 

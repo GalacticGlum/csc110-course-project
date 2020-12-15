@@ -15,9 +15,13 @@ def run_embedding_projector(root_directory: Union[str, Path]) -> None:
     """
     root_directory = Path(root_directory)
     embeddings_list = [
-        WordEmbeddings(checkpoint=path)
+        WordEmbeddings(
+            checkpoint_filepath=path,
+            name_metadata=path.stem)
         for path in root_directory.glob('*/')
     ]
+    # We can't have no embeddings!
+    assert len(embeddings_list) > 0
     embedding_projector(embeddings_list)
 
 
@@ -29,6 +33,8 @@ if __name__ == '__main__':
     # the link provided in the paper.
 
     # Run the embedding projector on all the embeddings in the output/word2vec folder.
+    # NOTE: Loading the embeddings may take a bit. Once they have been loaded in,
+    # and the server is running, navigate to http://localhost:5006/
     # run_embedding_projector('./output/word2vec/')
 
     # We can visualise the k-hop graph for a word of interest and embedding space.
@@ -48,8 +54,12 @@ if __name__ == '__main__':
     #     'romeo',
     #     checkpoint='output/word2vec/00001-shakespeare',
     #     # The similarity score threshold. A lower value will produce more complex/dense graphs.
-    #     # WARNING: If alpha is >= than the minimum pairwise cosine similarity between the word of
+    #     # NOTE: alpha is a very fickle parameter. Small changes in alpha (+/- 0.01) can cause
+    #     # reasonably large changes in the resultant k-hop graph. Experimentation is key!
+    #     #
+    #     # WARNING: If alpha is > than the maximum pairwise cosine similarity between the word of
     #     # interest and any other word in the vocab, then the graph will be empty! The word
     #     # of interest will not be a node of the graph, so there there is no path to it.
-    #     alpha=0.89
+    #     alpha=0.89,
+    #     # output_path='./output/k_hop/romeo_2_hop.png'  # Uncomment me to save to file!
     # )
