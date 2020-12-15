@@ -1,0 +1,89 @@
+\begin{figure*}[!hbp]
+    \centering
+    \begin{tikzpicture}
+        \pgfplotsset{compat=1.12}
+        \def\singlePlotWidth{0.33\textwidth}
+        \begin{groupplot}[
+            title style={align=center},
+            ylabel=\text{Cosine Similarity},
+            date coordinates in=x,
+            % xtick=data,
+            xticklabel style=
+        		{rotate=60, anchor=east, yshift=-5pt},
+            xticklabel={\year.\month},
+            date ZERO=2009-08-18,% <- improves precision!
+            max space between ticks=100pt,
+            try min ticks=10,
+            ylabel={Cosine Similarity},
+            grid=major,
+            group style={
+                group size=3 by 2,
+                x descriptions at=edge bottom,
+                y descriptions at=edge left,
+                horizontal sep=20pt,
+                vertical sep=30pt},
+            width=\singlePlotWidth,
+        ]
+            \nextgroupplot[title=climate\_change - denier]
+            \addplot+ [mark=none] table {\SimilarityDenier};
+            \nextgroupplot[title=climate\_change - fake]
+            \addplot+ [mark=none] table {\SimilarityFake};
+            \nextgroupplot[title=climate\_change - hoax]
+            \addplot+ [mark=none] table {\SimilarityHoax};
+            
+            \nextgroupplot[title=climate\_change - donald\_trump]
+            \addplot+ [mark=none] table {\SimilarityDonaldTrump};
+            \nextgroupplot[title=climate\_change - maga]
+            \addplot+ [mark=none] table {\SimilarityMAGA};
+            \nextgroupplot[title=climate\_change - liberal]
+            \addplot+ [mark=none] table {\SimilarityLiberal};
+        \end{groupplot}
+    \end{tikzpicture}
+    \caption{Cosine similarity of ``climate\_change'' and various terms related to climate change skepticism/denial and politics.}
+    \label{fig:similarity_skeptic}
+\end{figure*}
+
+\begin{figure*}[!hbp]
+    \centering
+    \begin{tikzpicture}
+        \pgfplotsset{compat=1.12}
+        \def\singlePlotWidth{0.33\textwidth}
+        \begin{groupplot}[
+            title style={align=center},
+            ylabel=\text{Cosine Similarity},
+            date coordinates in=x,
+            % xtick=data,
+            xticklabel style=
+        		{rotate=60, anchor=east, yshift=-5pt},
+            xticklabel={\year.\month},
+            date ZERO=2009-08-18,% <- improves precision!
+            max space between ticks=100pt,
+            try min ticks=10,
+            ylabel={Cosine Similarity},
+            grid=major,
+            group style={
+                group size=3 by 2,
+                x descriptions at=edge bottom,
+                y descriptions at=edge left,
+                horizontal sep=20pt,
+                vertical sep=30pt},
+            width=\singlePlotWidth,
+        ]
+            \nextgroupplot[title=climate\_change - inequality]
+            \addplot+ [mark=none] table {\SimilarityInequality};
+            \nextgroupplot[title=climate\_change - homelessness]
+            \addplot+ [mark=none] table {\SimilarityHomelessness};
+            \nextgroupplot[title=climate\_change - poverty]
+            \addplot+ [mark=none] table {\SimilarityPoverty};
+            
+            \nextgroupplot[title=climate\_change - mitigation]
+            \addplot+ [mark=none] table {\SimilarityMitigation};
+            \nextgroupplot[title=climate\_change - preventable]
+            \addplot+ [mark=none] table {\SimilarityPreventable};
+            \nextgroupplot[title=climate\_change - unavoidable]
+            \addplot+ [mark=none] table {\SimilarityUnavoidable};
+        \end{groupplot}
+    \end{tikzpicture}
+    \caption{Cosine similarity and ``climate\_change'' to various serious terms.}
+    \label{fig:similarity_society}
+\end{figure*}

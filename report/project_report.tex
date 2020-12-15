@@ -1,0 +1,767 @@
+\documentclass{paper}
+
+\title{\bf{A Computational Analysis of \\ Climate Change Sentiment on Social Media}}
+% \title{\bf{A Computational Analysis of Climate Change Sentiment on Social Media using Deep Neural Networks and SOTA Transformers for Multi-Class Tweet Classification, as a Heuristical Proxy for Context
+% }}
+\author{Shon Verch}
+\date{}
+
+% Font
+\usepackage[scaled=0.8]{FiraMono}
+
+% Graphics
+\usepackage{xcolor}
+\usepackage{placeins}
+\usepackage{graphics}
+\usepackage{tikz, ifthen, fp, calc}
+\usepackage{pgfplots, pgfplotstable}
+\usetikzlibrary{patterns, positioning}
+\usetikzlibrary{arrows, decorations.markings}
+\usepgfplotslibrary{fillbetween}
+\usepgfplotslibrary{groupplots}
+
+% Math imports
+\usepackage{bm}
+\usepackage{amsthm}
+\newtheorem{definition}{Definition}
+% Use bold instead of vector arrow
+\let\vec\mathbf
+\newcommand{\mat}[1]{\bm{#1}}
+
+% Data tables for graphs
+\include{graphs}
+% Subfigures
+\usepackage{caption}
+\usepackage{subcaption}
+
+% Tables
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{makecell}
+ \newcolumntype{P}{>{\raggedleft\arraybackslash}p{.2in}}
+%dashed line
+\usepackage{array}
+\usepackage{arydshln}
+\setlength\dashlinedash{0.2pt}
+\setlength\dashlinegap{1.5pt}
+\setlength\arrayrulewidth{0.3pt}
+
+\newcommand\Tstrut{\rule{0pt}{2.6ex}}         % = `top' strut
+\newcommand\Bstrut{\rule[-0.9ex]{0pt}{0pt}}   % = `bottom' strut
+
+% BibTeX
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage{csquotes}
+\usepackage[block=ragged,backend=bibtex,maxbibnames=99, sortcites]{biblatex}
+\addbibresource{references.bib}
+
+% Convenience Macros
+\newcommand{\inlineSection}[1]{\vspace{0.5em}\noindent\textbf{#1.}~}
+\newcommand{\targetWord}[1]{\underline{\textbf{#1}}}
+
+\begin{document}
+
+\maketitle
+
+%%%%%%%%% ABSTRACT
+\section*{Abstract}
+Despite overwhelming scientific consensus regarding climate change, the basis for climate change still remains a wildly debated and political issue. In this paper, we analyse a dataset of over 600M English-language tweets to understand how the climate change sentiment has changed over time. We train a series of word2vec models, one per month, to examine how words used in the context of climate change have changed over time. We also fine-tune a BERT model to perform sentiment classification on tweets.
+
+% TODO: Insert a brief summary of analysis here. What did we conclude? This can probably just be copied from the discussion section.
+
+%%%%%%%%% BODY TEXT
+\section{Introduction}
+The United States is the second largest emitter of greenhouse gasses, only behind China; in 2018, the United States emitted an estimated 5.4 billion metric tons of $\text{CO}_2$, $15\%$ of the total $\text{CO}_2$ emissions in that year ($36.58$ billion metric tons) \cite{our_world_in_data:co2_emissions, epa:inventory_us_greenhouse_gas_emissions_and_sinks, usgs:faqs_co2}. But, despite this, the basis for climate change remains a wildly debated and political issue; the strategies for tackling climate change in the United States have wildly varied between Presidential administrations. While the Obama administration enacted new climate change policy, the Trump administration has simultaneously rolled them back \cite{washington_post:trump_climate_change}. This huge disparity between strategies and overall attitude towards climate change between administrations suggests a dichotomy in climate change sentiment among the general public---or at least the voting populous.
+
+One such reason for the social and political divisiveness regarding climate change might have to do with the fact that climate change is still a relatively new issue in the mainstream. While studied for decades by academics, research about the impacts of climate change was largely ignored by the general public, and in large part due to a lack of awareness on the issue; however, in recent decades, climate change has become one of the world's foremost concerns, and ever so prevalent in mainstream media \cite{climate_change_media_coverage, nasa:climate_change_consensus}. In the last decade alone, the percentage of American adult voters that acknowledge that climate change is happening increased by $13\%$, meanwhile the percentage that said that ``most scientists think that global-warming is happening'' increased by $20\%$, Figure \ref{fig:climate_views_over_time} depicts the climate views of Americans over a period of ten years. Similarly, climate change has become more widely understood as a serious threat to our species and planet by the American public. Between $2008$ and $2018$, the percentage of Americans that said that climate change will harm future generations, plants and animals, developing countries, and the United States, increased by nearly $15\%$. Figure \ref{fig:climate_views_over_time_RiskPerception} shows the risk perception of climate change over a period of ten years. And this trend does not exclusively apply to the United States either. Climate change awareness has increased dramatically within the last decade \textit{across the board}. Since at least $2006$, concerns about climate change have increased internationally in countries such as France, Canada, and the United Kingdom, which have seen a more than $10\%$ increase in the percentage of people saying that climate change is a major threat. Figure \ref{fig:climate_concern_over_time_International} shows how the international concern about climate change has been increasing in the last decade.
+
+Yet, despite this seemingly universal shift in attitudes regarding climate change, and increasing awareness at a global level, there still exists a deep-rooted political divide in climate change views. At a national level, the majority of Americans agree that the climate change is a major concern. However, at the state and county level, differences in climate change attitudes across voters tend to be driven by political views. In historically Republican states (based on past elections) such as North Dakota, Oklahoma, Alabama, and Kentucky, the percentage of adults who indicated that they were worried about global warming in $2020$ was roughly $10\%$ \textit{below} the national average ($63\%$). Whereas, in historically Democratic states such as New York, New Jersey, California, and Maryland, the percentage of adults who said that they were worried about global warming was roughly $8\%$ \textit{above} the national average \cite{Ballew2019, https://doi.org/10.17605/osf.io/jw79p}.
+
+Indeed, since $2013$, those who identify as Democrats have been substantially more likely than those who identify as Republicans to report concern regarding climate change. In a $2018$ survey conducted by the Pew Research Center, roughly a quarter ($27\%$) of Republicans said that climate change is a major threat compared with more than three-quarters ($83\%$) of Democrats \cite{PRC:USPublicViewsOnClimateChangeAndEnergy}.  Figure \ref{fig:climate_views_over_time_PoliticalAssociation} shows the climate views of Americans based on political associations. Notice that respondents that identified as Conservative Republicans were markedly less likely to indicate that they believe that global warming is happening, while those who identified as Liberal Democrats were overwhelmingly likely to indicate belief. However, for both partisan groups, there has been little change in climate belief over time: Liberal Democrats have consistently indicated a strong belief, while Conservative Republicans have generally indicated weak belief that global warming is happening.
+
+This all to suggest that political views are inextricably linked with climate change beliefs and attitudes. The significant divide between climate change concerns among Liberals and Conservatives reveals the political nature of the issue. While this is not too surprising since climate change often manifests itself as such, given that the most basic fact of climate change---whether or not it is even happening---is still widely disagreed upon by two polar opposites on the political spectrum, it is clear that the views that underpin climate change beliefs are strongly linked with political attitudes. And at the same time, political views are strongly shaped and influenced by the news, discourse, and media around us. This is especially true on platforms such as Twitter and Facebook, where online political activities have been shown to strongly correlate to political awareness, activity, and participation in the real-world \cite{Ahmad2019, PRC:PublicAttitudesTowardPoliticalEngagement}. In particular, the explosion in climate change awareness in the last two decades has occurred in tandem with the advent and mass-adoption of social media. The Web has enabled real-time communication across the globe, and as a result, most news consumption has shifted from physical forms to online social media, as it is more convenient, accessible and easier to share than physical news \cite{pierri2020false, PRC:NewsUse}. Producing and publishing content is now easier than ever. What may have required an industry-backed media publisher twenty years ago, can now be done by a single person, independent of any large organisation. But, this low barrier to entry can be a doubled-edged sword: while it makes it easy and affordable for budding journalists and other content creators to get started, it also makes it extremely easy for malicious actors to disseminate low-quality and false information---and at an unprecedented rate. Vosoughi et. al. found that false news and misinformation spread significantly faster, farther, and deeper than the truth on Twitter, and the effects were more pronounced for false political news than other categories (terrorism, science, disasters, and finance) \cite{Vosoughi2018}.
+
+Mass discussion, discourse, and reporting about climate change on social media has inevitably created a broad spectrum of opinions regarding the issue \cite{PRC:HowPeopleWorldwideViewClimateChange}. In this respect, while climate change awareness, acceptance, and activism has grown exponentially in recent decades, this has also had the effect of amplifying the reach of misleading information. 
+
+Reporting about climate change in the mainstream is often rife with misinformation such as clickbait, journalistic bias, and sensationalization \cite{Cook2019}. Samantray and Pin noted that ``from empirical results [by applying VADER sentiment analysis on tweets] that anti-climate change tweets are largely not credible,'' which suggests that the spread of misinformation regarding climate change in social networks is largely due to bias and sensationalization \cite{Samantray2019}. Similarly, in a review on the effects of social media use on climate change opinion, knowledge, and behaviour, Anderson noted that while early research suggests social media has had a generally positive impact on climate change opinion, knowledge, and behaviour, social media does also ``provide space for framing climate change skeptically and activating those with a skeptical perspective of climate change'' \cite{Anderson2017}.
+
+With the meteoric rise in adoption of social media platforms as news outlets, especially among youth, along with the spread in fake news and misinformation on these same platforms, we desire further data and analysis on climate change sentiment on social media platforms such as Twitter to better understand the effect and efficiency of fake news \cite{news_use_across_social_media_platforms_2016, Shu2017}.
+
+In this paper, we focus our attention on Twitter, and perform a temporal analysis of climate change sentiment and beliefs on tweets over a span of three years. In specific, we analyse a dataset of over 600M English-language tweets to answer the following research questions:
+\begin{enumerate}
+    \item\label{rq1}\textbf{RQ1}: How have attitudes on climate change and related keywords changed over time on Twitter?
+    \item\label{rq2}\textbf{RQ2}: In what context are words used in discussions referencing climate change? Is there a political element?
+    \item\label{rq2}\textbf{RQ3}: How has misinformation and fake news impacted climate change beliefs on Twitter?
+    % Is there a correlation between `climate change sentiment' and how trustworthy a tweet is?
+    % \item\label{rq3}\textbf{RQ3}: What sort of narrative are tweets with false information trying to tell? Are misinformative tweets opposing or supporting climate change, or is neither?
+\end{enumerate}
+
+We take a data-driven three-pronged approach to analysing the tweets. Following the methodology from Schild et. al. and Zannettou et. al., we use the word2vec language model architecture to learn a set of word embeddings on tweets, in order to analyse their contents \cite{schild2020go, zannettou2019quantitative}. Next, we train a text classifier to predict the climate change sentiment on a dataset of 50K tweets, which we then extrapolate on unseen data to predict the sentiment of new tweets.
+
+% Finally, we train a secondary text classifier to perform `fake news' detection on a dataset of tweets made by troll accounts believed to be connected with Russia's Internet Research Agency, and used in the 2016 United States Presidential election tampering \cite{kaggle:russian_troll_tweets}.
+
+\begin{figure}[!hbp]
+    \centering
+    \begin{tikzpicture}
+        \pgfplotsset{compat=1.12}
+        \begin{axis}[
+            title={Climate Views of Americans ($2008$-$2018$)},
+            title style={align=center},
+            y tick label style={/pgf/number format/.cd,%
+              scaled y ticks = false,
+              fixed},
+            x tick label style={/pgf/number format/.cd,%
+              scaled x ticks = false,
+              set thousands separator={},
+              fixed},
+            grid=major,
+            ymin=0,
+            ymax=80,
+            ylabel=\text{\% Americans},
+            xlabel=\text{Year},
+            legend pos=south east,
+            legend cell align={left},
+        ]
+            % Question: Do you think that global warming is happening?
+            \addplot+ table {\ClimateViewsAmericansHappening};
+            
+            % Question: Assuming global warming is happening, do you think it is caused mostly by humans?
+            \addplot+ table {\ClimateViewsAmericansHumanCaused};
+            
+            % Question: Most scientists think global warming is happening?
+            \addplot+ table {\ClimateViewsAmericansScientificConsensus};
+            
+            \addlegendentry{Happening}
+            \addlegendentry{Human-caused}
+            \addlegendentry{Scientific Consensus}
+        \end{axis}
+    \end{tikzpicture}
+    \caption{The climate beliefs of adult American voters from $2008$ to $2018$ \cite{https://doi.org/10.17605/osf.io/jw79p, Ballew2019}. The graph shows the percentage of respondents who gave an affirmative answer the following questions: ``Do you think that global warming is happening?'' (Happening), ``Assuming global warming is happening, do you think that it is caused mostly by humans'' (Human-caused), and ``Most scientists think global warming is happening?'' (Scientific Consensus).}
+    \label{fig:climate_views_over_time}
+\end{figure}
+
+\begin{figure*}[!hpb]
+    \centering
+    \begin{minipage}[t]{.49\textwidth}
+        \centering
+        \begin{tikzpicture}
+            \pgfplotsset{compat=1.12}
+            \begin{axis}[
+                title={American Risk Perception of\\ Climate Change ($2008$-$2018$)},
+                title style={align=center},
+                y tick label style={/pgf/number format/.cd,%
+                  scaled y ticks = false,
+                  fixed},
+                x tick label style={/pgf/number format/.cd,%
+                  scaled x ticks = false,
+                  set thousands separator={},
+                  fixed},
+                grid=major,
+                ymin=0,
+                ymax=80,
+                ylabel=\text{\% Americans},
+                xlabel=\text{Year},
+                legend pos=south east,
+                legend cell align={left},
+                legend style={nodes={scale=0.7, transform shape}}
+            ]
+                % Question: Do you think that global warming will harm future generations?
+                \addplot+ table {\ClimateViewsAmericansHarmFutureGen};
+                
+                % Question: Do you think that global warming will harm plants and animals?
+                \addplot+ table {\ClimateViewsAmericansHarmPlantsAnimals};
+                
+                % Question: Do you think that global warming will harm developing countries?
+                \addplot+ table {\ClimateViewsAmericansHarmDevelopingCountries};
+                
+                % Question: Do you think that global warming will harm the US?
+                \addplot+ table {\ClimateViewsAmericansHarmUS};
+                
+                % Question: Do you think that global warming will harm me personally?
+                \addplot+ table {\ClimateViewsAmericansHarmMePersonally};
+                
+                \addlegendentry{Harm Future Generations}
+                \addlegendentry{Harm Plants \& Animals}
+                \addlegendentry{Harm Developing Countries}
+                \addlegendentry{Harm the US}
+                \addlegendentry{Harm Me Personally}
+            \end{axis}
+        \end{tikzpicture}
+        \caption{The risk perception of climate change among adult American voters from $2008$ to $2018$ \cite{https://doi.org/10.17605/osf.io/jw79p, Ballew2019}. The graph shows the percentage of respondents who gave an affirmative answer to the following statement: ``Global warming will harm future generations'', ``Global warming will harm plants and animals'', ``Global warming will harm developing countries'', ``Global warming will harm the US'', and ``Global warming will harm me personally.''}
+        \label{fig:climate_views_over_time_RiskPerception}
+    \end{minipage}\hfill%
+    \begin{minipage}[t]{.49\textwidth}
+        \centering
+        \begin{tikzpicture}
+            \pgfplotsset{compat=1.12}
+            \begin{axis}[
+                title={Climate Views of Americans \\ Based on Political Association ($2008$-$2018$)},
+                title style={align=center},
+                y tick label style={/pgf/number format/.cd,%
+                  scaled y ticks = false,
+                  fixed},
+                x tick label style={/pgf/number format/.cd,%
+                  scaled x ticks = false,
+                  set thousands separator={},
+                  fixed},
+                grid=major,
+                ymin=0,
+                ymax=100,
+                ylabel=\text{\% Americans},
+                xlabel=\text{Year},
+                legend pos=south east,
+                legend cell align={left},
+                legend style={nodes={scale=0.6, transform shape}}
+            ]
+                % Association: Liberal Democrat
+                \addplot [mark=*, blue, very thick] table {\ClimateViewsAmericansHappeningLiberalDemocrat};
+                
+                % Association Moderate/Conservative Democrat
+                \addplot [mark=*, blue!60!white, very thick] table {\ClimateViewsAmericansHappeningConservativeDemocrat};
+                
+                % Association: Independent
+                \addplot [mark=*, purple!80!blue!90!white, very thick] table {\ClimateViewsAmericansHappeningIndependent};
+                
+                % Association: Liberal/Moderate Republican
+                \addplot [mark=*, red!50!white, very thick] table {\ClimateViewsAmericansHappeningLiberalRepublican};
+                
+                % Association: Conservative Republican
+                \addplot [mark=*, red!80!black, very thick] table {\ClimateViewsAmericansHappeningConservativeRepublican};
+                
+                \addlegendentry{Liberal Democrat}
+                \addlegendentry{Moderate Democrat}
+                \addlegendentry{Independent (Non-Leaning)}
+                \addlegendentry{Moderate Republican}
+                \addlegendentry{Conservative Republican}
+            \end{axis}
+        \end{tikzpicture}
+        \caption{The climate views of adult American voters from $2008$ to $2018$ based on political association (the partisan group the respondent identifies with) \cite{https://doi.org/10.17605/osf.io/jw79p, Ballew2019}. The graph shows the percentage of respondents who said that they believe that global warming is happening, grouped by political association.}
+        \label{fig:climate_views_over_time_PoliticalAssociation}
+    \end{minipage}%
+\end{figure*}
+
+\begin{figure*}[!hpb]
+    \centering
+    \begin{tikzpicture}
+        \pgfplotsset{compat=1.12}
+        \def\singlePlotWidth{3.5cm}
+        \begin{groupplot}[
+            group style={
+                group size=5 by 2,
+                x descriptions at=edge bottom,
+                y descriptions at=edge left,
+                horizontal sep=2pt,
+                vertical sep=20pt},
+            ymin=0, ymax=1,
+            width=\singlePlotWidth,
+            scale only axis,
+            title style={
+                yshift=-6pt,
+                fill=black!10,
+                minimum width=\singlePlotWidth},
+            y tick label style={/pgf/number format/.cd,%
+              scaled y ticks = false,
+              fixed},
+            x tick label style={/pgf/number format/.cd,%
+              scaled x ticks = false,
+              set thousands separator={},
+              fixed},
+            grid=major,
+        ]
+        \pgfplotsinvokeforeach{Canada, France, Germany, Kenya, Mexico, Poland,South Africa,Spain,United Kingdom,United States}{
+            \nextgroupplot[title=#1]
+            \addplot+ table[x=year, y=prop, col sep=comma] {#1.csv};
+        }
+        \end{groupplot}
+    \end{tikzpicture}
+    \caption{The proportion of respondents from each country who indicated that they have major concerns about climate change from $2006$ to $2018$. The countries shown above saw an increase of \textit{at least} $10\%$ in this time period. Aggregated from the Pew Research Center \textit{Global Attitudes \& Trends Surveys} between $2006$ and $2018$ \cite{PRC:GlobalSurvey}.}
+    \label{fig:climate_concern_over_time_International}
+\end{figure*}
+
+\section{Datasets}
+\label{sec:datasets}
+
+To study climate change sentiment on social media, we collect four large-scale datasets of tweets for different stages of the analysis. In this section, we first provide a brief summary of each dataset. Then, we introduce how we process and clean the data so that it can be used for analysis.
+
+\inlineSection{Twitter} We focus on Twitter, an extremely popular mainstream microblogging and social networking service used by hundreds of millions of users \cite{twitter_active_users}. On Twitter, people can post and interact with others in messages up to 280 characters long \cite{twitter_max_char_docs}. The relatively small size of each message makes it ideal for large-scale data mining and processing.
+
+A monthly archive of tweets provided by the \textit{Archive Team} were accessed from the \textit{The Internet Archive} \cite{data_the_internet_archive}. The archives are obtained from Twitter using the Streaming API, which provides a $1\%$ random sample of all tweets made available on the platform, in real-time \cite{twitter_streaming_api}. The archives are provided in monthly installments from February 2011 to June 2020. We collected tweets posted between January 1, 2018 and June 31, 2020, and then filtered each monthly archive for only tweets in English and applied data cleaning techniques. Section \ref{sec:data_cleaning} outlines the techniques used to clean the tweets. In total, after filtering and cleaning the data, we were left with $582,395,451$ tweets. 
+
+\inlineSection{Sentiment Classification} To determine the climate change sentiment expressed in a given tweet, we use the Twitter Climate Change Sentiment Dataset provided by Edward Qian on \textit{Kaggle} \cite{kaggle:twitter_sentiment_data}. The dataset contains $43,943$ tweets pertaining to climate change collected between April 27, 2015 and February 21, 2018. Each tweet was labelled by three independent reviewers, and only tweets with unanimous labels were kept \cite{kaggle:twitter_sentiment_data}. Each tweet is labelled as one of the following classes:
+\begin{itemize}
+    \item News (\texttt{2}): factual news about climate change.
+    \item Pro (\texttt{1}): positive stance belief of man-made climate change.
+    \item Neutral (\texttt{0}): neutral stance on the belief of man-made climate change.
+    \item Anti (\texttt{-1}): negative stance on the belief of man-made climate change.
+\end{itemize}
+
+The data is provided as a CSV (comma-separated values) file with three columns: the sentiment class of the tweet (\texttt{sentiment}), the body of the tweet (\texttt{message}), and the unique Twitter id of the tweet (\texttt{tweetid}). For our analysis, we only use the the first two columns: \texttt{sentiment} and \texttt{message}.
+
+% \inlineSection{False News Detection} Misinformation and false news on Twitter is mostly prevalent in political contexts \cite{pierri2020false}. So, for the task of detecting false news, we narrow down our scope to only political content. We use a dataset of tweets made by troll accounts believed to be connected with Russia's Internet Research Agency, and that likely were used in the 2016 United States Presidential election tampering. These tweets represent good proxies for false information since they were posted by accounts whose goal was to disseminate misinformation during key moments of the 2016 Presidential election. The Russian Troll Tweets dataset provided by a \textit{Kaggle} user who goes by the username `vikas' contains $200,000$ tweets published by malicious accounts \cite{kaggle:russian_troll_tweets}. The data consists of two CSV files: \texttt{tweets.csv} and \texttt{users.csv}, containing the tweets and Twitter users respectively. Since we are only interested in the contents of the tweets, we discard the latter file and only use the \texttt{text} column (the body/content of each tweet) from the former. Tweets from this dataset are used as \textit{negative} examples for the false news classifier.
+
+% For positive examples (i.e. tweets that are \textit{not} false news), we use the Sentiment140 dataset provided by Marios Michailidis on \textit{Kaggle} \cite{kaggle:sentiment140}. The dataset contains 1.6M tweets provided as a CSV file. Specifically, we filter the dataset for tweets posted in the same time period as the negative examples, and then use the \texttt{TextBlob} sentiment analysis engine to get the \textit{subjectivity} of each tweet \cite{textblob}. We filter out tweets that have a subjectivity score greater than $0.5$. This serves as a reasonably effective, though coarse heuristic for factual tweets. 
+
+\subsection{Cleaning Twitter Data}
+\label{sec:data_cleaning}
+
+Each monthly archive takes about 40--50 GB in storage space (compressed), and the total archives are estimated to be about $4.8$ TB in size (compressed). This is due in large part to the fact that the raw dataset contains metadata for each tweet. To reduce the size of the dataset, we perform multiple cleaning steps. Each monthly archive of data is organised in a highly granulated folder structure. A snapshot of $1\%$ of all Tweets on the platform is provided for each minute, of every hour, of every day in the month as distinct JSON files. For each of these JSON files, we apply a set of preprocessing operations.
+
+First, we filter each monthly archive for only tweets in English and also discard irrelevant metadata (see the \texttt{clean\_twitter\_data.py} script). We only keep the following variables:
+\begin{itemize}
+    \item \texttt{created\_at}: the time the tweet was created.
+    \item \texttt{id}: the id of the tweet as assigned by Twitter.
+    \item \texttt{truncated}: boolean indicating whether the text was truncated.
+    \item \texttt{coordinates} (if not \texttt{null}): location of the client as a geoJSON object.
+    \item \texttt{place} (if not \texttt{null}): a \texttt{Place} object where the tweet is associated.
+    \item \texttt{quote\_count} (if not \texttt{null} or $0$): approximately how many times the tweet has been quoted.
+    \item \texttt{reply\_count} (if not \texttt{null} or $0$): number of times the tweet has been replied to.
+    \item \texttt{retweet\_count} (if not \texttt{null} or $0$): number of times the tweet has been retweeted.
+    \item \texttt{favorite\_count} (if not \texttt{null} or $0$): approximately how many times the tweet has been linked.
+    \item \texttt{lang}: the BCP 47 language id as corresponding the machine-detected language of the tweet, or \texttt{und} if no language could be detected.
+\end{itemize}
+
+Stripping out unnecessary metadata significantly reduces the file size of the dataset into manageable chunks. Table \ref{tab:dataset_process_breakdown} provides a detailed summary of the size of the data before and after cleaning.
+
+Next, from the JSON twitter data, we construct a corpus for training the word2vec models (see the \texttt{make\_twitter\_corpus.py} script). As our goal is to learn word embeddings, we simplify the data by removing Unicode characters, links, and Twitter handles (strings of the form ``@username'').
+
+To reduce the size of the vocabulary and group up words, we limit consecutive character repetitions to a maximum of three characters. So, for example, ``Maaaaaaario'' becomes ``Maaario''. While we do not want to absolutely eliminate words with repeated characters, since there is meaning in repeating characters consecutively (for example, to indicate excitement), the intuition behind this approach is that little semantic information is gained from repeated characters beyond a certain threshold. By grouping words such as "Hiiii" and "Hiiiiiii" into a common group ("Hiii") we are able to preserve the meaning, while simplifying and reducing the size of the dataset.
+
+Finally, we use a rule-based method for expanding contractions (using the \texttt{contractions} Python package). Expanding contractions leaves the meaning of the sentences intact while simplifying the vocabulary, making it easier to train our models.
+
+\begin{table}[t]
+    \centering
+    \begin{tabularx}{0.5\textwidth}{@{}XXXX@{}}\toprule
+        \textbf{Archive Date\newline (yyyy/mm)} & \textbf{Raw Size\newline (GB)} & \textbf{Cleaned Size (GB)} & \textbf{Total Tweets (cleaned)}\\\midrule
+        2018/02 & 3 & 0.405 & 186149\\\hdashline
+        2018/03 & 25 & 0.401 & 1495995\\\hdashline
+        2018/04 & 72 & 1 & 4332591\\\hdashline
+        2018/05	& 97 & 1 & 5742705\\\hdashline
+        2018/06	& 271 & 4 & 16548671\\\hdashline
+        2018/07	& 354 & 8 & 24750548\\\hdashline
+        2018/08	& 489 & 7 & 29084235\\\hdashline
+        2018/09	& 502 & 7 & 30150913\\\hdashline
+        2018/10	& 494 & 7 & 29252279\\\hdashline
+        2018/11	& 479 & 7 & 28484241\\\hdashline
+        2019/01	& 227 & 3 & 13162722\\\hdashline
+        2019/02	& 390 & 5 & 22525520\\\hdashline
+        2019/03	& 382 & 5 & 21751923\\\hdashline
+        2019/04	& 463 & 7 & 26877282\\\hdashline
+        2019/05	& 506 & 7 & 28897295\\\hdashline
+        2019/06	& 460 & 6 & 25972116\\\hdashline
+        2019/07	& 554 & 7 & 31101620\\\hdashline
+        2019/08	& 649 & 6 & 22649080\\\hdashline
+        2019/09	& 418 & 6 & 23610039\\\hdashline
+        2020/01	& 616 & 7 & 35326304\\\hdashline
+        2020/02	& 15 & 0.203 & 923193\\\hdashline
+        2020/03	& 596 & 7 & 31649220\\\hdashline
+        2020/04	& 721 & 8 & 40830461\\\hdashline
+        2020/05	& 722 & 7 & 41516678\\\hdashline
+        2020/06	& 733 & 9 & 45573671\\\midrule
+        \textbf{Total} & 10,238 & 132.654 & 582,395,451\\\bottomrule
+    \end{tabularx}
+    \caption{A detailed summary of the size of the data before and after cleaning. After cleaning the data, we were able to reduce the size by approximately 7700\%.}
+    \label{tab:dataset_process_breakdown}
+\end{table}
+
+\section{Methodology}
+\label{sec:methods}
+In this section, we present the necessary background information and methodology used for the analysis of tweets. Then, we explore various visualisation techniques for understanding high-dimensional features. We also provide a framework for reproducing all experiments and visualisations in this paper, and give a brief summary of how it works.
+
+\subsection{Representing Words as Vector Spaces}
+
+To analyse the content of a tweet, we first need to understand the meanings of the words that make up that tweet. If we can understand how words used on Twitter relate with one another, then we can begin to analyse and interpret semantic information about tweets as a whole. However, words in their human-friendly string representation are not particularly useful for analysis---there just isn't much we can do with a strings. To perform useful computation, we need to first transform words into numbers. We need an \textit{encoding scheme}.
+
+\inlineSection{One-hot Encodings} One of the simplest ways we can represent words as numerical values is using \textit{one-hot encoding}. For some vocabulary $V$ and word $w\in V$, the one-hot encoding of $w$ is a vector with $|V|$ dimensions (one for each distinct word in the vocabulary) where the $i$-th dimension is a binary value indicating whether $w$ is the word represented by the $i$-th dimension. Figure \ref{fig:one_hot_encoding} illustrates a few words encoded as one-hot vectors.
+
+\begin{figure}[t]
+    \centering
+    \begin{tikzpicture}
+    \node (tab1) {%
+        \begin{tabular}{l}\toprule
+            \textbf{Vocabulary} \Tstrut\Bstrut\\\midrule 
+            Mango \Tstrut\Bstrut\\\hdashline
+            Kiwi \Tstrut\Bstrut\\\hdashline
+            Lime \Tstrut\Bstrut\\\hdashline
+            Tomato
+        \end{tabular}};
+        
+    \node [right=of tab1] (tab2) {%
+        \begin{tabular}{@{}llll@{}}\toprule
+              \textbf{Mango} & \textbf{Kiwi} & \textbf{Lime} & \textbf{Tomato} \Tstrut\Bstrut\\\midrule 
+              1 & 0 & 0 & 0 \Tstrut\Bstrut\\\hdashline
+              0 & 1 & 0 & 0 \Tstrut\Bstrut\\\hdashline
+              0 & 0 & 1 & 0 \Tstrut\Bstrut\\\hdashline
+              0 & 0 & 0 & 1 \Tstrut\Bstrut
+        \end{tabular}};
+    \draw [ultra thick, transform canvas={yshift=-0.7em}, ->] (1.5,0) -- (2, 0);
+    \end{tikzpicture}
+    \caption{An example of one-hot encoded vectors. Each vector has a dimension for each distinct word of the vocabulary, and each component is a binary value.}
+    \label{fig:one_hot_encoding}
+\end{figure}
+
+One-hot encodings are a popular choice when encoding categorical variables as they are fairly simple structures and can be constructed quickly and easily. However, their use is very impractical with large vocabularies, as the sparse representation demands large amounts of memory. For a vocabulary of size $n$, encoding all words has a space complexity of $\Theta(n^2)$. This makes it computationally infeasible to use on large datasets (where the vocabulary can easily exceed 100K words). Furthermore, one-hot vectors do not contain any inherent meaning---the construction of the one-hot vectors only depends on the position of words in the vocabulary. Swapping the order of two words in the vocabulary will change their one-hot vectors. This makes it impossible to reason about word meaning with one-hot vectors. 
+
+\inlineSection{Word Embeddings} We desire a scheme for encoding words into vectors that is both low-dimensional (space efficient) and which encodes meaning. One reasonable metric for a `good' encoding model is to say that words which are more similar should be closer together in the vector space. Notice how one-hot encoding does not satisfy this condition.\footnote{What does it even mean to take the distance or similarity between two one-hot vectors?}
+
+A word embedding model, $\mathcal{W}$, is an $n$-dimensional real vector space, which maps words from a vocabulary, $V$, to an element of the vector space: $\mathcal{W}: V \rightarrow \mathbb{R}^n$. This vector space has the property that it \textit{encodes} rich semantic information. If well trained, one excellent consequence of word embeddings are that we can manipulating points in the vector space to reveal language features such as \textit{analogies} and \textit{word similarity}. For example, assume $\mathcal{W}$ is well-trained on the English language, then $\mathcal{W}(\text{king}) - \mathcal{W}(\text{man}) + \mathcal{W}(\text{woman}) \approx \mathcal{W}(\text{queen})$, where equality is measure of vector similarity.
+
+Word2Vec is one approach to modelling words as dense vectors in a high-dimensional vector space introduced by Mikolov et. al. \cite{mikolov2013efficient}. In this way, we \textit{embed} words into a dense vector space. More specifically, we \textit{learn} these embeddings with a shallow neural-network, in the hopes that we these embeddings can approximate word similarity and reveal hidden relationships (such as analogies) between words. 
+
+\inlineSection{The Skip-Gram Model} There are multiple techniques for training a word2vec model; however, the general approach is to train the network to solve a language-related task on one-hot encoded words, and in the meantime let it learn an internal word embedding representation. Then, we simply extract the learned latent space to obtain our word embeddings. As a consequence, the choice for the task which our network `solves' is a critical decider of performance.
+
+One approach which has proven to be very effective is the skip-gram architecture: a shallow neural-network trained to predict the context (or neighbourhood) of a target word \cite{goldberg2014word2vec, mikolov2013efficient}. The words in this neighbourhood are called \textit{context words} because the intuition is that neighbouring words are contextually meaningful.
+
+Notice that while the skip-gram model is a supervised learning algorithm, we can generate training data in an unsupervised manner. Given some text document, $\mathcal{D}$, which represents a sequence of words, a sliding window of size $d$ is used to construct sample pairs. For some word at index $i$, at most $2d$ training samples are constructed by taking the following pairs of words:
+\begin{equation*}
+    (\mathcal{D}_{i}, \mathcal{D}_{i-d}), (\mathcal{D}_{i}, \mathcal{D}_{i-d+1}),\ldots, (\mathcal{D}_{i}, \mathcal{D}_{i+d}).
+\end{equation*}
+Figure \ref{fig:skipgram_sliding_window} illustrates how these target-context word pairs are constructed. 
+
+The skip-gram model consists of three layers: an input layer with $|V|$ neurons, a hidden layer with $N\leq|V|$ neurons, and an output layer with $|V|$ \cite{mikolov2013efficient}. The model takes in a one-hot encoded vector $\vec{X}$ as input and outputs a probability vector $\vec{Y}$ representing the probability distribution of the context over all words in the vocabulary. We use the softmax activation function to produce to normalize the outputs of the model to a probability distribution. The hidden layer contains a learned representation of the words. The weights of this layer, $\mat{W}^{|V|\times N}$, which we call the \textit{projection weights}, is a matrix representing the latent vector space containing our word embeddings: the $i$-th row of $\mat{W}$ gives the embedding vector of word $i$. Figure \ref{fig:skipgram_architecture} illustrates this architecture.
+
+\begin{figure}[t]
+    \centering
+    \newcommand{\targetWordColour}{green!20!white}
+    \newcommand{\contextWordColour}{orange!20!white}
+    \renewcommand\tabularxcolumn[1]{m{#1}}
+    \begin{tabularx}{0.5\textwidth}{>{\hsize=0.8\hsize}X>{\hsize=0.20\hsize}X@{}}\toprule
+        \multicolumn{2}{c}{\textbf{Sample Construction via Sliding Window ($\bm{d=2}$)}}\\\midrule
+        \textbf{Sentence} & \textbf{Contexts} \\\midrule
+        \colorbox{\targetWordColour}{{[\targetWord{Sometimes}}}\colorbox{\contextWordColour}{{ we have]}} to fail to succeed. & we \newline have \\\hdashline
+        \colorbox{\contextWordColour}{{[Sometimes}}\colorbox{\targetWordColour}{\targetWord{we}}\colorbox{\contextWordColour}{{have to]}} fail to succeed. & sometimes \newline have \newline to\\\hdashline
+        \colorbox{\contextWordColour}{{[Sometimes we}}\colorbox{\targetWordColour}{\targetWord{have}}\colorbox{\contextWordColour}{{to fail]}} to succeed. & sometimes \newline we \newline to \newline fail\\\hdashline
+        $\ldots$ & $\ldots$\\\hdashline
+        Sometimes we have to \colorbox{\contextWordColour}{{[fail to}}\colorbox{\targetWordColour}{{\targetWord{succeed}]}}. &fail \newline to \newline\\\bottomrule
+    \end{tabularx}
+    \renewcommand\tabularxcolumn[1]{p{#1}}
+    \caption{Example target-context pairs for the sentence, ``Sometimes we have to fail to succeed''. The radius of the sliding window is $2$ words.}
+    \label{fig:skipgram_sliding_window}
+\end{figure}
+
+\inlineSection{Subsampling} The skip-gram approach of predicting the context word essentially boils down to a classification problem. In these sorts of problems, we want our data to be balanced so that it is representative of the true probability distribution. By generating training data using the sliding window approach, we oversample words which appear more often in the corpus. To remedy this, we use a technique proposed by Mikolov et. al. where we sample words according to a probability distribution designed to favour less frequently occurring words. This main advantage of subsampling is that we reduce the number of training examples, while maintaining the quality of the model. The sampling probability for a word $w\in V$ is given by
+\begin{equation*}
+    P(w)=\min\left\{\frac{t}{f(w)}\sqrt{\frac{f(w)}{t} + 1},1\right\},
+\end{equation*}
+where $f:V\rightarrow\Z$ gives the relative frequency of $w$ in the corpus \cite{mikolov2013efficient}.
+
+\inlineSection{Training} We train the model with a process called \textit{stochastic gradient descent} (SGD). A computational approach to minimizing a function. Training consists of the following steps:
+\begin{enumerate}
+    \item Generate a target-context pair, $(w_t, w_c)$, mapping a target word, $w_t$, to one of its neighbours, $w_c$ (within a predefined window size). 
+    \item Forward propagate the one-hot vector representation of the input word, $w_t$, through the model.
+    \item Calculate the training error according to a loss function, $\mathcal{L}$ (we use a variant of the cross entropy loss \cite{mikolov2013efficient, goldberg2014word2vec}).
+    \item Perform propagation to compute the gradient of the loss function with respect to the weights.
+    \item Update the weights: $\mat{W}_t=\mat{W}_{t-1}-\eta\nabla\mathcal{L}$, where $\mat{W}_t$ are the model weights at iteration $t$, $\mat{W}_{t-1}$ are the model weights in previous iteration, $\eta$ is the learning rate, and $\nabla\mathcal{L}$ are the gradients of the loss function. The learning rate is amount we should step in each iteration of SGD.
+    \item Repeat steps 1 through 5 until we converge to a minimum.
+\end{enumerate}
+
+\inlineSection{Negative Sampling} When we train the skip-gram model, we have to update weights for each word in the vocabulary. For large datasets, this can be a very expensive operation. Negative sampling reduces the computation required for training by only updating $s$ words (which are \textit{not} a context of the target word; hence these are \textit{negative} examples). This means that we only update a small percentage of the model weights in each training iteration. Mikolov et. al. showed that for small datasets, $5\leq s\leq 20$ works best, whereas for large datasets, $2\leq s\leq 5$ suffice \cite{mikolov2013efficient}. In our experiments, we use $s=5$.
+
+The negative samples are randomly sampled from the vocabulary with a probability distribution designed to favour more frequent words. The probability of selecting a word $w\in V$ as a negative sample is given by
+\begin{equation}
+    \label{eq:word2vec_neg_sample_distribution}
+    P(w)=\frac{f(w)^\lambda}{\sum_{k=1}^{|V|}f(w_k)^\lambda},
+\end{equation}
+where $f$ is the relative frequency function and $\lambda$ is a hyper-parameter. In our experiments, we use $\lambda = 0.75$.
+
+\inlineSection{Implementation} We implement the model using the TensorFlow deep learning library. We chose TensorFlow since it is a versatile library for training and deploying neural networks \cite{tensorflow2015-whitepaper}. It provides an interface for performing fast computation and linear algebra operations (such as matrix multiplication, which is core to training a neural work) on the GPU. It includes the \texttt{tf.keras} which simplifies the process of defining, training, and evaluating neural networks by providing implementations of common layers and activation functions such as 2D convolutional layers (\texttt{tf.keras.layers.Conv2D}), fully connected/linear layers (\texttt{tf.keras.layers.Dense}), the softmax activation function (\texttt{tf.keras.activations.softmax}), and more. 
+
+The \texttt{word2vec} modules provides a straightforward implementation of the architecture discussed in this section as a \texttt{tf.keras} subclass (see the \texttt{Word2Vec} class). To efficiently load the corpus, we leverage the the \texttt{tf.data} module. We use the \texttt{tf.data.Dataset} class to quickly load, tokenize, and batch our data (see the \texttt{make\_dataset} function). 
+
+\begin{figure*}[ht]
+    \centering
+    \input{skipgram_architecture_fig}
+    \caption{The architecture of the skip-gram model. Figure inspired by Weng \cite{weng_learning_embeddings}.}
+    \label{fig:skipgram_architecture}
+\end{figure*}
+
+\subsection{Sentiment Classification}
+In the last few years, transformer models have been shown to be widely effective on a variety of tasks in natural language processing. They have ushered in a new interest in applying transfer learning in natural language. In \textit{Language Models are Few-shot Learners}, Brown et. al. showed that a massively scaled up stack of transformer-decoder layers consisting of 175 billion parameters (GPT-3) could achieve strong performance on many NLP tasks without any further model training. 
+
+\inlineSection{BERT \& Transfer Learning} The Bidirectional Encoder Representations from Transformer, or BERT for short is a similar general-purpose transformer model designed for transfer learning applications. The model is pre-trained to learn deep representations of text in an unsupervised manner. Then, the pre-trained model can be fine-tuned on a NLP tasks by simply adding a new output layer. Devlin et. al. showed that this approach can achieve state-of-the-art performance on various NLP tasks (such as question answering and language inference) \cite{devlin2019bert}.
+
+Much of the state-of-the-art performance of these models comes from the their main ingredient: the transformer \cite{vaswani2017attention}. Using an attention mechanism, transformers are able to model long-term dependencies in the data. At each training step, the attention mechanism allows the transformer to focus on a specific part of the input. In this way, attention is focus, which mimicks the natural way which we process information. The second ingredient in the success of these models is their size. By stacking many transformers on top one another, we are able to increase the models capacity; however, this comes at a computational cost.
+
+Transfer learning enables us to solve complex problems in natural language processing without a large dataset or the computational requirements of training a full-scale GPT or BERT model. For this reason, we use a pre-trained BERT model and then fine-tune it on the climate change sentiment dataset (see Section \ref{sec:datasets}). Figure \ref{fig:bert_architecture} illustrates the architecture of the classification model.
+
+\begin{figure}[ht]
+    \centering
+    \input{bert_fig.tex}
+    \caption{The architecture of the classification model. It uses a pre-trained BERT backbone with a fully-connected classification head with softmax activation. Figure inspired by Alammar \cite{illustrated_bert}.}
+    \label{fig:bert_architecture}
+\end{figure}
+
+\inlineSection{Training} The pre-trained BERT model checkpoints are provided by TensorFlow via TF Hub, a framework for performing transfer learning with TensorFlow \cite{tf_hubs}. We use the \texttt{tensorflow\_hub} package to download and load the model, and then append a \texttt{tf.keras.layers.Dense} layer to the output of the BERT model to obtain our classification model \cite{tf_keras_docs, tf_hubs_github}. The model is trained to minimise the cross entropy loss (we use the \texttt{tf.keras.losses.SparseCategoricalCrossentropy} implementation), using the AdamW optimizer (from the \texttt{official.nlp.optimization} package) \cite{tf_officials_github}. This is all contained within the \texttt{train\_text\_classifier.py} script.
+
+\inlineSection{Interpreting Sentiment} Our sentiment classification models predicts a probability distribution over all sentiment classes (i.e. positive, negative, and neutral). But, how can we produce a single sentiment value for an input? One approach is to take the class with the largest probability; however, what happens if two classes have similar probabilities? What if they differ by a very small factor? In this case, resolving the distribution to its maximum value might not accurately reflect the true class of the input. We address this problem by \textit{sampling} from the probability distribution. If $\hat{\vec{P}}$ is a probability vector representing the predicted probability distribution for $m$ classes labelled $\{1,2,\ldots,m\}$, then for some $1\leq i \leq m$, the probability of sampling class $i$ is given by $\hat{\vec{P}}_i$.
+
+% \subsection{False News Detection}
+
+\subsection{Embedding Projection}
+The ability to explore high-dimensional vector spaces such as word embeddings is crucial both in the development of models, and in the research of new techniques. Neural networks, embeddings, and other forms of highly-parameterised models are often referred to as `black boxes' because studying the structure of these models is extremely difficult and sometimes impossible. At the same time, the ability to `peek' into the internals is key in testing and debugging models. For example, we might want to verify that an embedding space is truly representing the desired features. 
+
+Compared to `conventional' data, understanding word embeddings can be particularly challenging due to the high-dimensionality of the data. The sheer number of dimensions in the embedding space makes it impractical to work with the raw vectors. Similarly, conventional visualisation tools are seldom useful due to both a lack of support for large dimensional data, and a lack of interactivity which is key for navigating a dense vector space such as word embeddings. We follow an approach by Smilkov et. al. where we reduce the dimensional of the embedding vectors to project it into a vector space which is human-friendly and easy to visualise \cite{smilkov2016embedding}. In this section, we present an interactive visualisation and analysis tool for \textit{projecting} high-dimensional vector spaces, such as word embeddings, into two- or three-dimensional space 
+
+\inlineSection{Overview} The embedding projector is a Python application that can be ran from the command-line (see the \texttt{embedding\_projector.py} module) built using the Plotly Dash framework \cite{plotly}. Figure \ref{fig:embedding_projector} shows the interface of the embedding projector. The application allows users to explore an arbitrary vector space given an embedding matrix; however, it is mostly tailored for use with word embeddings. The embedding projector allows the user to not only inspect the projected vector space, but also to search for words (in the analysis panel) and isolate the neighbouring points of a given selection (i.e. view a scatter plot only containing the neighbours).
+
+\begin{figure*}[ht]
+    \centering
+    \begin{tikzpicture}[
+        x=1mm, y=1mm,
+    ]
+    \node[anchor=south west=inner sep=0pt] (fig1) at (0, 0) {\fbox{\includegraphics[width=0.8\textwidth]{EmbeddingProjector.png}}};
+    
+    % Data panel
+    \filldraw[draw=red!50!white,fill=red,fill opacity=0.05] (2.3,70) rectangle (27,54);
+    
+    \filldraw[draw=red!50!white,fill=red!20!white,] (27-5, 70) rectangle (27,70-5) node[color=black,opacity=1,pos=0.5] {1};
+
+    % PCA
+    \filldraw[draw=red!50!white,fill=red,fill opacity=0.05] (2.3,52) rectangle (27,28);
+    
+    \filldraw[draw=red!50!white,fill=red!20!white,] (27-5, 52) rectangle (27,52-5) node[color=black,opacity=1,pos=0.5] {2};
+    
+    % Scatter plot view
+    \filldraw[draw=red!50!white,fill=red,fill opacity=0.05] (2.3+50,45) rectangle (27+70,18);
+    
+    \filldraw[draw=red!50!white,fill=red!20!white,] (2.3+50, 45) rectangle (2.3+50+5,45-5) node[color=black,opacity=1,pos=0.5] {3};
+
+    % Analysis panel
+    \filldraw[draw=red!50!white,fill=red,fill opacity=0.05] (2.3+121,70) rectangle (27+121,10);
+    
+    \filldraw[draw=red!50!white,fill=red!20!white,] (27+121-5, 70) rectangle (27+121,70-5) node[color=black,opacity=1,pos=0.5] {4};
+
+    \end{tikzpicture}
+    \caption{The interface of the embedding projector: (1) the data panel, (2) the PCA panel, where users can choose any combination of two or three principle components, (3) the view of the projected data, and (4) the analysis panel, where users can search for words and explore their neighbours in the embedding space.}
+    \label{fig:embedding_projector}
+\end{figure*}
+
+\inlineSection{Principle Component Analysis} To visualise the high-dimensional embedding vectors, we need to reduce it to a space that can be easily understood by a human: two- or three-dimensions. We use Principle Component Analysis (PCA), a common dimension reductionality approach to achieve this. For a given embedding matrix, we first compute the top ten principle components (these are the components with the most explained variance). Then, we select the top three of those components as our choice for the $x$, $y$, and $z$ dimensions of the projected space. While this means that the projected view is not an exact representation of the embedding geometry, it provides a very good approximation to the density of the space, which makes it ideal for analysing similarity and closeness of data points. The PCA panel (see Figure \ref{fig:embedding_projector}) allows users to configure which principle components correspond to which axis. We use the \texttt{sklearn.decomposition.PCA} implementation which supports two algorithms for computing the principle components: taking the eigenvalues of the covariance matrix, or performing singular value decomposition (the algorithm for computing the PCA is chosen automatically) \cite{scikit-learn}.
+
+\inlineSection{Suffix Trees} Searching the embedding space is crucial for adequate exploration of the data. For word embeddings, this means that we must be able to search for words in the vocabulary and find their corresponding embedding vector in the projected space. We say that a word $w\in V$ is a search result if the query, $q$, is a substring of $w$. 
+
+A naive algorithm would iterate through the whole vocabulary, and check each word against the query. Of course, this is incredibly inefficient. For each query, we have to check against the \textit{whole} vocabulary. Instead, we use suffix trees to efficiently perform substring searching on the vocabulary. This reduces the running time to $\mathcal{O}(|q|)$, at the cost of an initial startup of $\mathcal{O}(|V|)$, where $|q|$ is the length of the query. For large vocabularies (such as the ones we train in this paper), this has a substantial performance difference.
+
+We use a suffix tree implementation provided by the \texttt{suffix\_trees} package \cite{suffix_trees_package}. Since suffix trees operate on a single string input, we convert our vocabulary into a space-separated string, and then feed that to the suffix tree. Queries on this suffix trees gives us a set of indices indicating where in the string the queried substring occurs. To resolve these matches into words, we exploit the structure of the string that the suffix tree was built on: the fact that it is space-separated. Thus, for each index, we search for the first space to the left and right of the match to determine the word. This has a runtime of $\mathcal{O}(L)$, where $L$ is the length of the largest word in the vocabulary. Considering the fact that the length word in the English language is only 45 characters, and word frequency substantially decreases with length, this is not a bottleneck \cite{wiki:longest_words, smith2012distinct}.
+
+\inlineSection{$\bm{K}$-Nearest Neighbour Search} We use a $K$-nearest neighbours model to efficiently find the most similar word embeddings. A naive `bruteforce' algorithm to find the top $k$ similar vectors would have to iterate through the whole vocabulary, compute the pairwise cosine similarity, and then sort the results, for a total running time of $\Theta(|V|\times Nk)$. In comparison, a $k$-nearest neighbours implemented as a KD-tree has a query runtime of $\Theta(k\log{|V|})$, which is a vast improvement from the naive algorithm. This comes with a startup cost of $\Theta(|V|\times N)$, but it is negligble in the long-run. And the model implemented as a Ball tree has a similar run-time. We use the \texttt{sklearn.neighbors.KNeighborsClassifier} implementation which supports both KD-trees and Ball trees (automatically chosen based on the type of data) \cite{scikit-learn}.
+
+\subsection{\textit{K}-Hop Graphs: Visualising Word Relation}
+
+To perform an accurate analysis of tweet content, we must understand how words are used with one another, and in which contexts. Leveraging our word2vec models, we visualise the relationship between similar words as a graph, following the technique used by Schild et. al. 
+
+\inlineSection{Infinity-Hop Graph}
+A $\infty$-hop graph is an undirected weighted graph whose nodes are words. It models the relationship between every word in the vocabulary. We say that for some distinct $w_1,w_2\in V$, an edge with weight $S(w_1,w_2)$, between $w_1$ and $w_2$ exists if and only if $S(w_1,w_2)\geq\alpha$, where $S$ is an arbitrary similarity metric between two words and $\alpha$ is a similarity threshold.
+
+In this paper, we define $S$ as the \textit{cosine similarity} between the two word embedding vectors for words $w_1$ and $w_2$. Geometrically, this similarity metric can be interpreted as the cosine of the angle between the two vectors.
+
+\inlineSection{$\bm{K}$-Hop Graphs} We say that the $k$-hop graph for some word of interest, $T\in V$, is a subgraph of the $\infty$-hop graph, consisting of all the nodes and their respective edges in the $\infty$-hop graph that are at most $k$ edges from $T$. Informally, this means that the $k$-hop graph is the $\infty$-hop graph limited to at most $k$ `hops' from a word of interest.
+
+Formally, the $k$-hop graph, $\mathcal{H}_k^{(T)}$, for a vocabulary $V$, word of interest $T\in V$, similarity function $S:V^2\rightarrow\R$, and similarity threshold $\alpha\in\R$, is a subgraph of the $\infty$-hop graph defined by the ordered pair
+\begin{equation*}
+    \mathcal{H}_k^{(T)}=\left(N_k^{(T)}, E_k^{(T)}\right),
+\end{equation*}
+where $N_k^{(T)}\subseteq N_\infty$ is the node or vertex set, and $E_k^{(T)}\subseteq E_\infty$ is the edge set, where $N_\infty$ and $E_\infty$ are the node and edge sets for the $\infty$-hop graph respectively.
+
+For all $w\in N_\infty$, the word $w$ is a node of the $k$-hop graph if and only if there exists a path with at most $k$ edges from $w$ to $T$ in the $\infty$-hop graph. The edges of $\mathcal{H}_k^{(T)}$ are simply those which are leftover after filtering out nodes which are not reachable from $T$ in at most $k$ edges. So,
+\begin{equation*}
+    E_k^{(T)}=\left\{(w_1,w_2)\in  E_\infty \mid w_1,w_2\in N_k^{(T)} \right\}.
+\end{equation*}
+
+\inlineSection{Visualising the Graph}  We employ several algorithms for visualising the $k$-hop graphs. To build, process, and manipulate the graphs, we use the NetworkX Python package---a popular library for studying graphs and networks \cite{networkx_docs}. After computing the node and edge set of the $k$-hop graph, we use a force-directed layout algorithm called ForceAtlas2 (using the \texttt{fa2} package) to spatilize the network \cite{Jacomy2014, fa2_networkx}. The algorithm takes into account edge weights to determine an optimal graph layout. Then, we perform Louvain  community detection (using the \texttt{python-louvain} package) to extract communities from the network in an unsupervised manner \cite{python_louvain, Blondel_2008}. We assign a colour to each community, and colour each node with that colour. Edges colours are determined by the colour of the source node.
+
+\inlineSection{Implementation Details} Building the infinity-hop graph for the projection weights matrix, $\mat{W}^{|V|\times N}$ (where $|V|$ is the vocabulary size and $N$ is the embedding dimensionality) requires the computation of a pairwise cosine similarity matrix, $\mat{M}$. For large vocabularies, computing $\mat{M}$ is a particularly expensive operation, since it requires $\Theta(|V|^2)$ space. For a matrix with 32-bit floating-point values (\texttt{float32}), this can easily exceed 40 GB ($|V|\geq 100,000$).
+
+However, notice that we don't actually need to store anything: building the infinity-hop graph simply requires that we keep the pairs whose similarity is above a threshold. So, we reduce the memory footprint by \textit{batching} the computations. For some batch size $B\in\N$, we iteratively construct the infinity-hop graph by computing the pairwise cosine similarity matrix between $\mat{W}$ and $B$ rows of $\mat{W}$ at a time. More specifically, for some row offset $i\leq \left\lfloor\frac{|V|}{B}\right\rfloor + 1$, we compute the pairwise cosine similarity matrix, $\mat{M}^\prime$ as the normalized dot product of a smaller matrix and $\mat{W}$, given by
+\begin{equation*}
+    \mat{M}^\prime=\frac{\langle\mat{C}^{(i)}, \mat{W}\rangle}{\|\mat{C}^{(i)}\|_2\|\mat{W}\|_2},
+\end{equation*}
+where $\mat{C}^{(i)}$ is a matrix containing all rows of $\mat{W}$ with indices between $iB$ and $(i+1)B$. Then, we apply filtering on $\mat{M}^\prime$ to build the infinity-hop graph. Converting rows from `local' indices to their word embedding index just requires adding the row offset. For example, the first row of $\mat{M}^\prime$ corresponds to the $B$-th row of $\mat{W}$, and in general the $j$-th row of $\mat{M}^\prime$ is the $j+Bi$-th row of $\mat{W}$, where $i$ is the row offset.
+
+This approach yields a space complexity of $\Theta(|V|\times B)$. For $B=256$ and $|V|=100,000$, this means that we only need roughly 102 MB of available RAM---a significant reduction from the 40 GB requirement of the previous algorithm.
+
+\subsection{Instructions for Reproducibility}
+We provide the source code for running all experiments, along with the training and testing data, and pre-trained model weights.\footnote{https://github.com/GalacticGlum/csc110-course-project}.
+
+\inlineSection{Note About Requirements} Some of the required packages include native code. Unfortunately, these libraries do not come with pre-compiled binaries for Python 3.8 so a C/C++ compiler is required to build them from source when installing requirements. On Windows, download \textcolor{blue}{\hyperlink{https://visualstudio.microsoft.com/downloads/\#build-tools-for-visual-studio-2019}{MSVC 1.14+}}. On Mac or Linux, \texttt{gcc} or \texttt{g++} will work.
+
+\inlineSection{Dataset} Click \hyperlink{https://drive.google.com/file/d/16TWeFHXcywSoc13vrsw9SxEZ4lJndp4g/view?usp=sharing}{\textcolor{blue}{here}} to download the data used to train and evaluate the models. Note that this is a fairly large file (roughly 4 GB compressed), so downloading may take a while depending on internet connection. Extract the archive in a folder called \texttt{data} (under the root project directory).
+
+\inlineSection{Model Weights} Click \hyperlink{https://mega.nz/file/b0EViYzT\#MEgk2yE5M3fjYUimtyhAj6XzZK5lZr7G29bPGN1rc20}{\textcolor{blue}{here}} to download the \textbf{full} model checkpoints and weights. Note that this is a fairly large file (roughly 20 GB compressed), so downloading may take a while depending on the internet connection.
+
+For this reason, we also provide a subset of the trained model weights (roughly 1 GB compressed), which contain the word embeddings for tweets posted in April, May, and June, 2020 along with the trained sentiment classification model. We also provide light-weight word embeddings (roughly 50 MB) for a corpus consisting of Shakespeare's works which were used for testing the models and visualisation tools.
+
+Click \hyperlink{https://mega.nz/file/28FQmbZY\#nHoAVB3AL0OdyyP58KVLjMG6GTm5eLt77EgyF60xOn4}{\textcolor{blue}{here}} to download a \textbf{subset} of the model checkpoints and weights. In the interest of space, we omit all checkpoints except for the latest one. Furthermore, for the word2vec models, since the output layer is not used outside of training, we omit the checkpoints entirely. Instead, we only provide the projection weights (\texttt{proj\_weights.npy}), model vocabulary (\texttt{vocab.txt}), and tokenizer state (\texttt{tokenizer.json}).
+
+After the download is complete, extract the archive in the root project directory. The zip file already contains an \texttt{output} sub directory, so there is no need to create one.
+
+\inlineSection{Running the Experiments \& Visualisations} See the provided \texttt{main.py} for starter code to run the embedding projector, and/or generate a $k$-hop graph.
+
+\section{Results}\label{sec:results}
+\begin{table*}[h]
+    \centering
+    \begin{tabularx}{\textwidth}{>{\hsize=0.1\hsize}X>{\hsize=0.30\hsize}XX@{}}\toprule
+        \multicolumn{3}{c}{\textbf{Major Events}}\\\midrule
+        \textbf{\#} & \textbf{Day} & \textbf{Event}\\\midrule
+        1 & June 8, 2018 & The 44th G7 summit is held in Canada. Donald Trump gets into multiple disputes with other world leaders: insults Japanese Prime Minsiter Shinzo Abe, and speaks harshly about Canadian Prime Minister Justin Trudeau \cite{wiki:g7_44}.\\\hdashline
+        2 & September 14, 2018 & Global Climate Action Summit is held \cite{un_climate_action_summit}.\Tstrut\Bstrut\\\hdashline
+        3 & August 19, 2019 & NASA Confirms the uptick in Amazon rainforest fire activity \Tstrut\Bstrut\\\hdashline
+        4 & March 15, 2019 & A series of global school strikes. The first organised by Greta Thunberg. Over 1.4M people participate. \cite{wiki:greta_climate_strikes}. \Tstrut\Bstrut\\\hdashline
+        5 & September 20, 2019 & Global week of climate action. Over 4M people participate. \cite{wiki:greta_climate_strikes}.\Tstrut\Bstrut\\\hdashline
+        6 & November 4, 2019 & The Trump administration gives a formal notice of intention to withdraw from the Paris Agreement \cite{wiki:us_leaves_paris_agreement}.\Tstrut\Bstrut\\\hdashline
+        7 & June 12, 2020 & The 46th G7 summit is cancelled due to COVID-19 \cite{wiki:g7_46}.\\\bottomrule
+    \end{tabularx}
+    \caption{Major climate events. Figures \ref{fig:monthly_mentions_ClimateChange_GlobalWarming}-\ref{fig:monthly_mentions_ClimateKeyFigures} are annotated with these events.}
+    \label{tab:major_events}
+\end{table*}
+
+\subsection{Temporal Analysis}
+\input{temporal_analysis_figs}
+
+We start by analysing how basic features of tweets have changed over time. More specifically, we study how the frequency and proportion of certain tweets have changed from a temporal perspective, while also putting it into context with key events that have occurred in the last two years. See Table \ref{tab:major_events} for a summary of the real-world events which we consider in this analysis. 
+
+\inlineSection{Evolution of Climate Change Discussion} First, we look ``climate change'' and its (outdated) sibling, ``global warming.'' We use these two terms to gauge how general discussion about climate change has evolved over time (under the assumption that they are proxies for climate change discussion). Figure \ref{fig:monthly_mentions_ClimateChange_GlobalWarming} shows the monthly mentions of the terms ``climate change'' and ``global warming''. First, we observe that both the frequency and proportion for ``global warming'' is markedly lower, and its curve is flatter, compared to the frequency and proportion distributions for ``climate change''; however, the curves for ``global warming'' and ``climate change'' follow roughly the same shape, which indeed suggests that they are synonymous terms used in place with one another. This makes sense since ``global warming'' is a term which has fallen out of fashion in the last decade \cite{nasa:climate_change_v_global_warming}. Seeing as a majority of Twitter users are of the younger demographic, it is consistent that they would use ``climate change'' as opposed to its outdated counterpart \cite{nasa:climate_change_v_global_warming}. 
+
+Next, we notice that the mentions for both words sharply increases after June 8, 2019, which corresponds to the first day of the 44th G7 summit \cite{wiki:g7_44}. This suggests that Twitter users may have been discussing the summit and as it relates to climate change. However, we do not see a similar jump in mentions on September 14, 2018---when the Global Climate Action Summit was held. This could be due to the fact that the summit did not attract as much attention compared to the G7 summit. Indeed, it plausible that controversies during the G7 summit attracted the attention of Twitter users, which therefore also brought more attention to the climate change issue (relating to U.S. President Donald Trump making off-hand remarks to other world leaders) \cite{wiki:g7_44}. In comparison, there were no such controversies during the Global Climate Action Summit \cite{un_climate_action_summit}.
+
+Similarly, we observe the most sizable jump after the global school strikes held on March 15, 2019 \cite{wiki:greta_climate_strikes}. This makes sense since Greta Thunberg used Twitter and other social media very heavily to market the movement. This is reflected in the fact that the number of mentions (both in frequency and proportion) for ``climate strike``, ``climate justice'', ``climate activists``, and ``climate action`` experienced a spike around September 20, 2019 (see Figue \ref{fig:monthly_mentions_ClimateActivism}). Likewise, in Figure \ref{fig:monthly_mentions_ClimateKeyFigures}, we see that there is a very large spike in usage of ``greta thunberg'' on Twitter after the around March, 2019, which was when the first global school strikes were organised \cite{wiki:greta_climate_strikes}.  
+
+We also see an initial spike in the usage of ``climate crisis'' near August, which might correspond the uptick in Amazon rainforest fire activity which began to receive international attention in late-July to early-August \cite{nasa:climate_change_consensus}. 
+
+\inlineSection{Climate Change Skepticism} To get a grasp on how climate change skepticism might have evolved on Twitter, we look at the frequency and proportion distribution for the following terms: ``\#climatechangehoax'', ``skeptic'', ``deniers'', and ``denier'', and ``\#climatechangeisreal'', which were selected based on their sentiment and proximity in the embedding vector space. From Figure \ref{fig:monthly_mentions_ClimateSkepticism}, we see that the usage of ``\#climatechangehoax'' and ``\#climatechangeisreal'' is very sparse and almost non-existent. On the other hand, we observe a spike in the usage of ``deniers'', ``denier'', and ``skeptic`` all around the third and fourth event markets, which correspond to the uptick in Amazon rainforest fire activity and the global school action strikes organised by Greta Thunberg. This suggests that there was backlash from the skeptic climate change community following these events. And this is consistent with our assumptions: increased activity by climate change skeptics after such events means that the community was attempting to dismiss these events---a common pattern among skeptic communities.
+
+\subsection{Content Analysis}
+\begin{table*}[ht]
+    \centering
+    \begin{subfigure}{0.49\textwidth}
+        \centering
+        \begin{tabularx}{\textwidth}{@{}XXXX@{}}\toprule
+            \multicolumn{4}{c}{\textbf{First Word2Vec Model (month of February, 2018)}}\\\midrule
+            \textbf{Word} \newline \textbf{\footnotesize{(climate\_change)}}  & \textbf{Similarity} & \textbf{Word} \newline\textbf{\footnotesize{(global\_warming)}}  & \textbf{Similarity} \\\midrule
+            opposition & 0.526 & moronic & 0.543\\\hdashline
+            ours & 0.516 & guessing & 0.537\\\hdashline
+            greater & 0.495 & unfortunate & 0.53\\\hdashline4
+            ourselves & 0.487 & planted & 0.533\\\hdashline
+            integrity & 0.486 & miracles & 0.509\\\hdashline
+            viewing & 0.481 & plain & 0.506\\\hdashline
+            advert & 0.478 & smartest & 0.504\\\hdashline
+            muc & 0.475 & nyr & 0.501\\\hdashline
+            movements & 0.475 & believes & 0.500\\\hdashline
+            necessary & 0.471 & johns & 0.497\\\hdashline
+            proving & 0.471 & lt2018 & 0.496\\\hdashline
+            intended & 0.470 & everton & 0.495\\\hdashline
+            imo & 0.467 & critic & 0.493\\\hdashline
+            humanity & 0.466 & hired & 0.490\\\hdashline
+            states & 0.466 & \#megafree\newline checkupcamp & 0.490 \\\hdashline
+            logical & 0.465 & appears & 0.484\\\hdashline
+            heartless & 0.465 & begins & 0.480\\\hdashline
+            farmers & 0.465 & competitor & 0.479\\\hdashline
+            embrace & 0.465 & trains & 0.477\\\hdashline
+            buhari & 0.463 & mat & 0.477\\\bottomrule
+        \end{tabularx}
+    \end{subfigure}
+    \begin{subfigure}{0.49\textwidth}
+        \centering
+        \begin{tabularx}{\textwidth}{@{}XXXX@{}}\toprule
+            \multicolumn{4}{c}{\textbf{Last Word2Vec Model (month of June, 2020)}}\\\midrule
+            \textbf{Word} \newline \textbf{\footnotesize{(climate\_change)}}  & \textbf{Similarity} & \textbf{Word} \newline\textbf{\footnotesize{(global\_warming)}}  & \textbf{Similarity} \\\midrule
+            climate\_crisis & 0.651 & climate\_change & 0.605\\\hdashline
+            \#climatechange & 0.639 & unbalanced & 0.601\\\hdashline
+            global\_warming & 0.605 & \#poverty & 0.596\\\hdashline
+            pollution & 0.595 & epidemics & 0.591\\\hdashline
+            covid\_19s & 0.574 & adverse & 0.589\\\hdashline
+            epidemics & 0.572 & viruss & 0.587\\\hdashline
+            \#inequality & 0.558 & deepened & 0.586\\\hdashline
+            mitigate & 0.557 & persistent & 0.584\\\hdashline
+            near\_term & 0.555 & mutation & 0.584\\\hdashline
+            ecological & 0.550 & illiteracy & 0.583\\\hdashline
+            \#poverty & 0.546 & tuberculosis & 0.581\\\hdashline
+            inequality & 0.543 & catastrophic & 0.580\\\hdashline
+            mitigation & 0.536 & preventable & 0.580\\\hdashline
+            disparities & 0.536 & situation & 0.576\\\hdashline
+            emissions\newline  & 0.535 & pandemics & 0.576\\\hdashline
+            obesity & 0.532 & susceptibility & 0.575\\\hdashline
+            meta\_analysis & 0.532 & cv19 & 0.575\\\hdashline
+            \#pregnancy & 0.530 & worsens & 0.575\\\hdashline
+            cardiovascular & 0.525 & mutations & 0.575\\\hdashline
+            mutation & 0.523 & unavoidable & 0.574\\\bottomrule
+        \end{tabularx}
+    \end{subfigure}
+    \caption{The top 20 most similar words to ``climate\_change'' and ``global\_warming'' for the first and last word2vec models.}
+    \label{tab:most_similar_words}
+\end{table*}
+\input{content_analysis_figs}
+
+We train a word2vec model on each monthly archive of the Twitter dataset (see Section \ref{sec:datasets}). Using this ensemble of word2vec models, we can analyse the content of tweets.
+
+\inlineSection{Contextual Evolution} First we look at the evolution of word context over time. Table \ref{tab:most_similar_words} depicts the top 20 most similar words to ``climate\_change'' and ``global\_warming'' for the word2vec models trained on the first and last month of data available. The first observation we make is that words are \textit{more} similar to ``climate\_change'' and ``global\_warming'' in the last word2vec model compared to the first. This indicates that the neighbourhood around these terms is \textit{denser} in the embedding space for June, 2019. Next, we notice that compared to February 2018, the top 20 most similar words in June, 2020 have taken on a more dire sentiment. While for the first month, the most similar word to ``climate\_change'' was ``opposition'', in the last month, the most similar word is ``climate\_crisis''. This change in word usage over time indicates a general shift in climate change sentiment on Twitter---it shows how the seriousness of the situation has taken root, and it suggests that in climate change related discussions, people are using more negative words with more serious undertones.
+
+Furthermore, we see that climate change and global warming are near COVID-19 related terms---``covid\_19'', ``pandemic'', and other similar variants show up very near the top of the list. Indeed, this does suggest a hidden relationship between the pandemic and climate change. This could be due to the fact that they are both---in their own right---global emergencies, and such they appear in similar contexts.
+
+Next, we study how the cosine similarity of certain word pairs have changed over time. Figures \ref{fig:similarity_skeptic} and \ref{fig:similarity_society} depict the cosine similarity of ``climate\_change'' to various terms related to climate change skepticism/denial, climate crisis, and other serious words. First, we observe that the cosine similarity of ``climate\_change'' and ``denier'' is fairly volatile, but has been decreasing since late 2019. We observe a similar trend for the cosine similarity of ``climate\_change'' and ``hoax''. However, for the rest of the terms in Figure \ref{fig:similarity_skeptic}, we notice a somewhat peculiar trend. To start, we can see that the similarity curves for ``fake``, ``donald\_trump'', ``maga``, and ``liberal'' all follow similar shapes. This could be an indication that there is an even deeper relationship between all these terms---something external is causing the similarity of these terms to change all at once. One possible explanation for this goes back to the fact that climate change discussion tends to be highly politicized. So, it is not too surprising that the we observe a similar curves for the political terms (such as ``donald\_trump``, ``maga``, etc...). Secondly, we observe that all the curves seems to spike at around the same time: February/March, 2020. This corresponds with the impetus of the COVID-19 pandemic, likely indicating that discussions about the pandemic led to discussions about climate change. This supports our findings in the Table \ref{tab:most_similar_words}, where pandemic-related terms were in the top 20 most similar list of words to ``climate\_change'' and ``global\_warming''.
+
+Shifting our focus onto Figure \ref{fig:similarity_society}, we see that the similarity for words with more dire sentiments has been growing over time. Specifically, we see a steady similarity for ``poverty'', ``homelessness', and ``inequality''. This likely indicates how Twitter users feel about what is \textit{causing} climate change, and shows a fairly strong negative sentiment. Likewise, we observe that the similarity for ``mitigation'', ``preventable'', and ``unavoidable'' are also very high. Once again, the steady trend in the similarity of these terms suggests that on the whole, Twitter users feel that climate change mitigation and prevention is important. Looking back to our temporal analysis, this supports the fact that there was an increase in mentions about climate change activism (see Figure \ref{fig:monthly_mentions_ClimateActivism}).
+
+\inlineSection{Word Relation} Figures \ref{fig:2hop_climate_change_FIRST} and \ref{fig:2hop_climate_change_LAST} illustrate the 2-hop graph for the first and last word2vec models. In the first figure, we see that the a majority of the words are negative, and that there are two main communities: one with words such as ``struggling'', ``stressing'', and ``insecure'', and the other with words such as ``outrageous'', ``endure'', and ``unhappy''. This shows a worrisome trend of negativity surrounding climate change. On the other hand, the second figure depicts far more topical words. We see that the largest nodes, and thus those with the most connections, are words such as ``\#climatechange'', ``socio\_economic'', and ``mitigating'', which suggests a much more productive stance towards climate change. As a whole, from this pair of 2-hop graphs, we can see a shift in attitudes about climate change on Twitter---from a purely negative stance, to one that is about resolution, though with an increased urgency. Interestingly, the two communities in the second graph show a very clean split between terms: the community coloured orange mostly contains terms related to technology, whereas the blue community contains terms related to emergency, crisis, and inequity. We can see the interaction between these two related concepts in Figure \ref{fig:2hop_climate_change_LAST}.
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\textwidth]{2Hop_ClimateChange_2018_02.png}
+    \caption{The $2$-hop graph for ``climate\_change'' for the first word2vec model (trained on tweets from February 2018).}
+    \label{fig:2hop_climate_change_FIRST}
+\end{figure*}
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\textwidth]{2Hop_ClimateChange_2020_06.png}
+    \caption{The $2$-hop graph for ``climate\_change'' for the last word2vec model (trained on tweets from June 2020).}
+    \label{fig:2hop_climate_change_LAST}
+\end{figure*}
+
+\subsection{Sentiment Analysis}
+Using the sentiment classification model, we analyse the climate change sentiment of tweets. For each month, we take a 10\% random sample of all the tweets in the dataset, and then compute the climate change sentiment of each tweet (according to methodology presented in Section \ref{sec:methods}). Figure \ref{fig:sentiment_over_time} shows the average climate change sentiment per month, plotted on a $-1$ (negative) to $1$ (positive) scale. We see that the sentiment mostly hovers $0$, which suggests that most tweets are neutral. After all, this makes sense since Twitter is a general discussion platform, and the reality is that discussions about climate change are in the minority of all discussions. However, around February/March, 2020, we see an a fairly substantial increase in the climate change sentiment. This suggests not only an increase in climate changed related activity during that period of time, but also \textit{positive} discussion. Notice that this is the same time period for which we observed the spike in the cosine similarity graphs (Figure \ref{fig:similarity_skeptic}). On the other hand, we also see a dip in the climate change sentiment around June, 2019. Recall from Table \ref{tab:major_events} that this was around the time when the 46th G7 summit was \textit{supposed} to be held. Thus, this could suggest a response to the summit, where there was an increase in the activity of climate change skeptics.
+
+\begin{figure}[!t]
+    \centering
+    \begin{tikzpicture}
+        \pgfplotsset{compat=1.12}
+            \begin{axis}[
+                title={Average Sentiment of Tweets},
+                align=center,
+                date coordinates in=x,
+                % xtick=data,
+                xticklabel style=
+            		{rotate=60, anchor=east, yshift=-10pt},
+                xticklabel={\year.\month},
+                date ZERO=2009-08-18,% <- improves precision!
+                max space between ticks=100pt,
+                try min ticks=10,
+                legend pos=north west,
+                ylabel={Average Sentiment},
+                grid=major
+            ]
+            \addplot+ [thick, mark=none] table {\SentimentOverTime};
+            \draw [color=eventColour,dashed, ultra thick] (2018-6-8,-1) -- (2018-6-8,1);
+            \draw [color=eventColour,dashed, ultra thick] (2018-9-14,-1) -- (2018-9-14,1);
+            \draw [color=eventColour,dashed, ultra thick] (2019-8-19,-1) -- (2019-8-19,1);
+            \draw [color=eventColour,dashed, ultra thick] (2019-9-20,-1) -- (2019-9-20,1);
+            \draw [color=eventColour,dashed, ultra thick] (2019-11-4,-1) -- (2019-11-4,1);
+            \draw [color=eventColour,dashed, ultra thick] (2020-6-12,-1) -- (2020-6-12,1);
+        \end{axis}
+    \end{tikzpicture}
+    \caption{The average climate change sentiment of a 10\% random sample per month, plotted on a $-1$ to $1$ scale. The score of a tweet is assigned as follows: $1$ if positive, $-1$ if negative, and $0$ if neutral.}
+    \label{fig:sentiment_over_time}
+\end{figure}
+
+\section{Discussion}
+Based on the results of the temporal, content, and sentiment analysis, we see how the climate change sentiment of Twitter users has been shifting to one that is more serious, polarized; it echos the dire situation, and the current state of the climate emergency. As shown in the Section \ref{sec:results}, there is a high emphasis on climate change on Twitter. We also see how discussions about climate change on Twitter have become more `severe', and that tweets are more likely to be of a positive sentiment (i.e. supporting climate change); that is, to be associated with the `great' or `good' aspects of climate issue---as opposed skepticism and climate change denial. 
+
+Further research is desired to investigate how misinformation on Twitter is targeted to affect the sentiment of users. This remains inconclusive
+
+% Start references
+\FloatBarrier
+\clearpage
+\printbibliography[]
+
+
+\end{document}

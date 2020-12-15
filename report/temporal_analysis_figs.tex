@@ -1,0 +1,318 @@
+% FIGURE FOR MONTHLY MENTIONS OF CLIMATE CHANGE/GLOBAL WARMING
+\definecolor{eventColour}{HTML}{27b898}
+\newcommand{\eventAnnotationsFreq}{
+    \draw [color=eventColour,dashed, ultra thick] (2018-6-8,0) -- (2018-6-8,10000);
+    \draw [color=eventColour,dashed, ultra thick] (2018-9-14,0) -- (2018-9-14,10000);
+    \draw [color=eventColour,dashed, ultra thick] (2019-8-19,0) -- (2019-8-19,10000);
+    \draw [color=eventColour,dashed, ultra thick] (2019-9-20,0) -- (2019-9-20,10000);
+    \draw [color=eventColour,dashed, ultra thick] (2019-11-4,0) -- (2019-11-4,10000);
+    \draw [color=eventColour,dashed, ultra thick] (2020-6-12,0) -- (2020-6-12,10000);
+}
+
+\newcommand{\eventAnnotationsProp}{
+    \draw [color=eventColour,dashed, ultra thick] (2018-6-8,0) -- (2018-6-8,0.001);
+    \draw [color=eventColour,dashed, ultra thick] (2018-9-14,0) -- (2018-9-14,0.001);
+    \draw [color=eventColour,dashed, ultra thick] (2019-8-19,0) -- (2019-8-19,0.001);
+    \draw [color=eventColour,dashed, ultra thick] (2019-9-20,0) -- (2019-9-20,0.001);
+    \draw [color=eventColour,dashed, ultra thick] (2019-11-4,0) -- (2019-11-4,0.001);
+    \draw [color=eventColour,dashed, ultra thick] (2020-6-12,0) -- (2020-6-12,0.001);
+}
+
+\begin{figure*}[!hpb]
+    \centering
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \begin{tikzpicture}
+        \pgfplotsset{compat=1.12}
+            \begin{axis}[
+                title={Frequency},
+                align=center,
+                date coordinates in=x,
+                % xtick=data,
+                xticklabel style=
+            		{rotate=60, anchor=east, yshift=-10pt},
+                xticklabel={\year.\month},
+                date ZERO=2009-08-18,% <- improves precision!
+                max space between ticks=100pt,
+                try min ticks=10,
+                legend pos=north west,
+                ylabel={Frequency},
+                grid=major
+            ]
+            \addplot+ [thick, mark=none] table {\WordClimateChangeFrequency};
+            \addplot+ [ultra thick, mark=none, dashed] table {\WordGlobalWarmingFrequency};
+            \addlegendentry{climate change}
+            \addlegendentry{global warming}
+            \eventAnnotationsFreq
+            \end{axis}
+        \end{tikzpicture}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \begin{tikzpicture}
+        \pgfplotsset{compat=1.12}
+            \begin{axis}[
+                title={Proportion},
+                align=center,
+                date coordinates in=x,
+                % xtick=data,
+                xticklabel style=
+            		{rotate=60, anchor=east, yshift=-10pt},
+                xticklabel={\year.\month},
+                date ZERO=2009-08-18,% <- improves precision!
+                max space between ticks=100pt,
+                try min ticks=10,
+                legend pos=north west,
+                ylabel={Proportion},
+                grid=major
+            ]
+            \addplot+ [thick, mark=none] table {\WordClimateChangeProportion};
+            \addplot+ [ultra thick, mark=none, dashed] table {\WordGlobalWarmingProportion};
+            \addlegendentry{climate change}
+            \addlegendentry{global warming}
+            \eventAnnotationsProp
+            \end{axis}
+        \end{tikzpicture}
+    \end{subfigure}
+    
+    \caption{Monthly mentions of the terms ``climate change'' and ``global warming'' on Twitter.}
+    \label{fig:monthly_mentions_ClimateChange_GlobalWarming}
+\end{figure*}
+
+% FIGURE FOR MONTHLY MENTIONS FOR CLIMATE ACTIVISM KEYWORDS
+\begin{figure*}[!hpb]
+    \centering
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \begin{tikzpicture}
+        \pgfplotsset{compat=1.12}
+            \begin{axis}[
+                title={Frequency},
+                align=center,
+                date coordinates in=x,
+                % xtick=data,
+                xticklabel style=
+            		{rotate=60, anchor=east, yshift=-10pt},
+                xticklabel={\year.\month},
+                date ZERO=2009-08-18,% <- improves precision!
+                max space between ticks=100pt,
+                try min ticks=10,
+                legend pos=north west,
+                ylabel={Frequency},
+                grid=major
+            ]
+            \addplot [color=blue, mark=none] table {\WordClimateStrikeFrequency};
+            \addplot [mark=none, color=red] table {\WordClimateCrisisFrequency};
+            \addplot [mark=none, color=orange] table {\WordClimateJusticeFrequency};
+            \addplot [mark=none, color=black] table {\WordClimateActivistsFrequency};
+            \addplot [mark=none, color=purple] table {\WordClimateActivistFrequency};
+            \addplot [mark=none, color=green!50!black] table {\WordClimateActionFrequency};
+            \addlegendentry{climate strike}
+            \addlegendentry{climate crisis}
+            \addlegendentry{climate justice}
+            \addlegendentry{climate activists}
+            \addlegendentry{climate activist}
+            \addlegendentry{climate action}
+            \eventAnnotationsFreq
+            \end{axis}
+        \end{tikzpicture}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \begin{tikzpicture}
+        \pgfplotsset{compat=1.12}
+            \begin{axis}[
+                title={Proportion},
+                align=center,
+                date coordinates in=x,
+                % xtick=data,
+                xticklabel style=
+            		{rotate=60, anchor=east, yshift=-10pt},
+                xticklabel={\year.\month},
+                date ZERO=2009-08-18,% <- improves precision!
+                max space between ticks=100pt,
+                try min ticks=10,
+                legend pos=north west,
+                ylabel={Proportion},
+                grid=major
+            ]
+            \addplot+ [color=blue, mark=none] table {\WordClimateStrikeProportion};
+            \addplot+ [color=red, mark=none, color=red] table {\WordClimateCrisisProportion};
+            \addplot+ [color=orange, mark=none, color=orange] table {\WordClimateJusticeProportion};
+            \addplot+ [color=black, mark=none] table {\WordClimateActivistsProportion};
+            \addplot+ [color=purple, mark=none] table {\WordClimateActivistProportion};
+            \addplot+ [color=green!50!black, mark=none] table {\WordClimateActionProportion};
+            \addlegendentry{climate strike}
+            \addlegendentry{climate crisis}
+            \addlegendentry{climate justice}
+            \addlegendentry{climate activists}
+            \addlegendentry{climate activist}
+            \addlegendentry{climate action}
+            \eventAnnotationsProp
+            \end{axis}
+        \end{tikzpicture}
+    \end{subfigure}
+    \caption{Monthly mentions of the terms ``climate strike'', ``climate justice'', and``climate activists'', ``climate activist'', and ``climate action'' on Twitter.}
+    \label{fig:monthly_mentions_ClimateActivism}
+\end{figure*}
+
+% FIGURE FOR MONTHLY MENTIONS FOR CLIMATE CHANGE SKEPTICISM
+\begin{figure*}[!hpb]
+    \centering
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \begin{tikzpicture}
+        \pgfplotsset{compat=1.12}
+            \begin{axis}[
+                title={Frequency},
+                align=center,
+                date coordinates in=x,
+                % xtick=data,
+                xticklabel style=
+            		{rotate=60, anchor=east, yshift=-10pt},
+                xticklabel={\year.\month},
+                date ZERO=2009-08-18,% <- improves precision!
+                max space between ticks=100pt,
+                try min ticks=10,
+                legend pos=north west,
+                ylabel={Frequency},
+                grid=major,
+                legend cell align={left},
+                legend style={nodes={scale=0.8, transform shape}}
+            ]
+            \addplot+ [color=blue, mark=none] table {\WordClimateChangeHoaxFrequency};
+            \addplot+ [color=red, mark=none, color=red] table {\WordSkepticFrequency};
+            \addplot+ [color=orange, mark=none, color=orange] table {\WordDeniersFrequency};
+            \addplot+ [color=black, mark=none] table {\WordDenierFrequency};
+            \addplot+ [color=green!50!black, mark=none] table {\WordClimateChangeIsRealFrequency};
+            \addlegendentry{\#climatechangehoax}
+            \addlegendentry{skeptic}
+            \addlegendentry{deniers}
+            \addlegendentry{denier}
+            \addlegendentry{\#climatechangeisreal}
+            \eventAnnotationsFreq
+            \end{axis}
+        \end{tikzpicture}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \begin{tikzpicture}
+        \pgfplotsset{compat=1.12}
+            \begin{axis}[
+                title={Proportion},
+                align=center,
+                date coordinates in=x,
+                % xtick=data,
+                xticklabel style=
+            		{rotate=60, anchor=east, yshift=-10pt},
+                xticklabel={\year.\month},
+                date ZERO=2009-08-18,% <- improves precision!
+                max space between ticks=100pt,
+                try min ticks=10,
+                legend pos=north west,
+                ylabel={Proportion},
+                grid=major,
+                legend cell align={left},
+                legend style={nodes={scale=0.7, transform shape}, fill opacity=0.5, draw opacity=1,text opacity=1}
+            ]
+            \addplot+ [color=blue, mark=none] table {\WordClimateChangeHoaxProportion};
+            \addplot+ [color=red, mark=none, color=red] table {\WordSkepticProportion};
+            \addplot+ [color=orange, mark=none, color=orange] table {\WordDeniersProportion};
+            \addplot+ [color=black, mark=none] table {\WordDenierProportion};
+            \addplot+ [color=green!50!black, mark=none] table {\WordClimateChangeIsRealProportion};
+            \addlegendentry{\#climatechangehoax}
+            \addlegendentry{skeptic}
+            \addlegendentry{deniers}
+            \addlegendentry{denier}
+            \addlegendentry{\#climatechangeisreal}
+            {
+                \draw [color=eventColour,dashed, ultra thick] (2018-6-8,0) -- (2018-6-8,3.86054459158227e-06);
+                \draw [color=eventColour,dashed, ultra thick] (2018-9-14,0) -- (2018-9-14,3.86054459158227e-06);
+                \draw [color=eventColour,dashed, ultra thick] (2019-8-19,0) -- (2019-8-19,3.86054459158227e-06);
+                \draw [color=eventColour,dashed, ultra thick] (2019-9-20,0) -- (2019-9-20,3.86054459158227e-06);
+                \draw [color=eventColour,dashed, ultra thick] (2019-11-4,0) -- (2019-11-4,3.86054459158227e-06);
+                \draw [color=eventColour,dashed, ultra thick] (2020-6-12,0) -- (2020-6-12,3.86054459158227e-06);
+            }
+            \end{axis}
+        \end{tikzpicture}
+    \end{subfigure}
+    \caption{Mentions of the terms ``\#climatechangehoax'', ``skeptic'', ``deniers'', ``denier'', and ``\#climatechangeisreal'' on Twitter.}
+    \label{fig:monthly_mentions_ClimateSkepticism}
+\end{figure*}
+
+% FIGURE FOR MONTHLY MENTIONS FOR KEY FIGURES
+\begin{figure*}[!hpb]
+    \centering
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \begin{tikzpicture}
+        \pgfplotsset{compat=1.12}
+            \begin{axis}[
+                title={Frequency},
+                align=center,
+                date coordinates in=x,
+                % xtick=data,
+                xticklabel style=
+            		{rotate=60, anchor=east, yshift=-10pt},
+                xticklabel={\year.\month},
+                date ZERO=2009-08-18,% <- improves precision!
+                max space between ticks=100pt,
+                try min ticks=10,
+                legend pos=north west,
+                ylabel={Frequency},
+                grid=major,
+                legend cell align={left},
+            ]
+            \addplot+ [color=blue, mark=none] table {\WordDonaldTrumpFrequency};
+            \addplot+ [color=red, mark=none, color=red] table {\WordJustinTrudeauFrequency};
+            \addplot+ [color=orange, mark=none, color=orange] table {\WordGretaThunbergFrequency};
+            \addlegendentry{donald trump}
+            \addlegendentry{justin trudeau}
+            \addlegendentry{greta thunberg}
+            \draw [color=eventColour,dashed, ultra thick] (2018-6-8,0) -- (2018-6-8,28456.55);
+            \draw [color=eventColour,dashed, ultra thick] (2018-9-14,0) -- (2018-9-14,28456.55);
+            \draw [color=eventColour,dashed, ultra thick] (2019-8-19,0) -- (2019-8-19,28456.55);
+            \draw [color=eventColour,dashed, ultra thick] (2019-9-20,0) -- (2019-9-20,28456.55);
+            \draw [color=eventColour,dashed, ultra thick] (2019-11-4,0) -- (2019-11-4,28456.55);
+            \draw [color=eventColour,dashed, ultra thick] (2020-6-12,0) -- (2020-6-12,28456.55);
+            \end{axis}
+        \end{tikzpicture}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \begin{tikzpicture}
+        \pgfplotsset{compat=1.12}
+            \begin{axis}[
+                title={Proportion},
+                align=center,
+                date coordinates in=x,
+                % xtick=data,
+                xticklabel style=
+            		{rotate=60, anchor=east, yshift=-10pt},
+                xticklabel={\year.\month},
+                date ZERO=2009-08-18,% <- improves precision!
+                max space between ticks=100pt,
+                try min ticks=10,
+                legend pos=north west,
+                ylabel={Proportion},
+                grid=major,
+                legend cell align={left},
+                legend style={nodes={scale=1, transform shape}, fill opacity=0.5, draw opacity=1,text opacity=1}
+            ]
+            \addplot+ [color=blue, mark=none] table {\WordDonaldTrumpProportion};
+            \addplot+ [color=red, mark=none, color=red] table {\WordJustinTrudeauProportion};
+            \addplot+ [color=orange, mark=none, color=orange] table {\WordGretaThunbergProportion};
+            \addlegendentry{donald trump}
+            \addlegendentry{justin trudeau}
+            \addlegendentry{greta thunberg}
+            \eventAnnotationsProp
+            \end{axis}
+        \end{tikzpicture}
+    \end{subfigure}
+    \caption{Mentions of the people ``donald trump'', ``justin trudeau'', and ``greta thunberg'' on Twitter.}
+    \label{fig:monthly_mentions_ClimateKeyFigures}
+\end{figure*}
