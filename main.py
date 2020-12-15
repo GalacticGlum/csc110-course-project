@@ -46,7 +46,7 @@ if __name__ == '__main__':
     #
     # Depending on the size of the graph produced, you may wish to output it to a file,
     # rather than opening it in a preview window. To do so, simply specify the output_path
-    # (which can be either a string or path.Pathlib object!) param. Various output formats are
+    # param (which can be either a string or path.Pathlib object!). Various output formats are
     # supported (png, jpeg, svg, tex to name a few), which are determined by the extension of
     # the output_path.
 
