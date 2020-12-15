@@ -320,7 +320,7 @@ def visualise_k_hop_graph(target_word: str,
 
 def main(args: argparse.Namespace) -> None:
     """Main entrypoint for the script."""
-    visualise_k_hop_graph(**args)
+    visualise_k_hop_graph(**vars(args))
 
 
 if __name__ == '__main__':
@@ -364,7 +364,7 @@ if __name__ == '__main__':
                         help='The DPI of the exported file.')
     parser.add_argument('--verbose', action='store_true', help='Whether to log messages.')
     # Word Embeddings location
-    parser.add_argument('--checkpoint', dest='checkpoint_directory', type=Path, default=None,
+    parser.add_argument('--checkpoint', type=Path, default=None,
                         help='Path to a checkpoint directory containing a numpy file with '
                              'the trained embedding weights (proj_weights.npy) and a text '
                              'file with the model vocabulary (vocab.txt)')
