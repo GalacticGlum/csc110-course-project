@@ -1,39 +1,57 @@
-"""Plot similarity of the given words over time."""
+"""Plot sentiment of the given words over time."""
+import random
 import argparse
+import tensorflow as tf
+from typing import List
 from pathlib import Path
 from dateutil.parser import parse
-from datetime import date, datetime
 
 import tikzplotlib
 import matplotlib.pyplot as plt
 
 from logger import logger
-from word_embeddings import WordEmbeddings
-from temporal_analysis import plot_similarity_over_time
+from temporal_analysis import get_sentiment_over_time
+
+def sample_lines(filename: str, k: int) -> List[str]:
+    """Randomly sample k lines from the given file."""
+    sample = []
+    with open(filename, 'rb') as f:
+        f.seek(0, 2)
+        filesize = f.tell()
+        indices = sorted(random.sample(range(filesize), k))
+        for i in range(k):
+            f.seek(indices[i])
+            f.readline()
+            sample.append(f.readline().rstrip())
+
+    return sample
 
 
 def main(args: argparse.Namespace) -> None:
     """Main entrypoint for the script."""
-    temporal_embeddings = []
-    paths = Path(args.checkpoint_root).glob(args.glob)
-    for path in paths:
-        path_name = path.stem
-        path_name = path_name[path_name.find('-') + 1:path_name.find('_p')].replace('_', '-')
-        path_date = parse(path_name, fuzzy=True).replace(day=1)
+    files = Path(args.data_root).glob(args.glob)
+    temporal_tweets = []
+    for file in files:
+        filename = file.stem
+        filename = filename[filename.find('-') + 1:filename.find('_p')].replace('_', '-')
+        file_date = parse(filename, fuzzy=True).replace(day=1)
 
-        # Load the word embeddings
-        embeddings = WordEmbeddings(
-            checkpoint_filepath=path,
-            suffix_tree=False,
-            nearest_neighbours=False
-        )
-        temporal_embeddings.append((path_date.date(), embeddings))
+        # Get tweets (1K per month to run sentiment analysis)
+        tweets = sample_lines(file, k=1000)
+        temporal_tweets.append((file_date, tweets))
+
+    model = tf.saved_model.load(str(args.checkpoint))
+    sentiments = get_sentiment_over_time(temporal_tweets, model=model)
 
     figsize = (args.figure_width / args.figure_dpi, args.figure_height / args.figure_dpi)
     plt.figure(figsize=figsize, dpi=args.figure_dpi)
+    # Plot data
+    x = [date for date, _ in sentiments]
+    y = [sentiment for _, sentiment in sentiments]
 
-    # Draw the graph.
-    plot_similarity_over_time(temporal_embeddings, args.word_a, args.word_b)
+    plt.xlabel('Date')
+    plt.ylabel('Average Climate Change Sentiment')
+    plt.plot_date(x, y, '-o')
 
     if not args.output_path:
         plt.show()
@@ -47,12 +65,12 @@ def main(args: argparse.Namespace) -> None:
         logger.info('Exported figure to {}'.format(args.output_path))
 
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Visualisation tools for temporal analysis.')
-    parser.add_argument('checkpoint_root', type=Path, help='The root folder containing all checkpoints.')
-    parser.add_argument('word_a', type=str, help='The first word to compare.')
-    parser.add_argument('word_b', type=str, help='The second word to compare.')
-    parser.add_argument('--glob', type=str, default='00001-20*',
+    parser.add_argument('checkpoint', type=Path, help='The folder containing the model checkpoint.')
+    parser.add_argument('data_root', type=Path, help='The folder containing the corpus files.')
+    parser.add_argument('--glob', type=str, default='20*.txt',
                         help='Pattern to match checkpoint folders. Defaults to \'00001-20*\'')
     parser.add_argument('-o', '--output', dest='output_path', type=Path, default=None,
                         help='The file to write the figure to.')

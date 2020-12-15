@@ -136,8 +136,6 @@ def get_sentiment_over_time(temporal_tweets: List[Tuple[datetime, List[str]]],
     class_tensor = tf.convert_to_tensor(classes, dtype=tf.float32)
     for timestamp, tweets in tqdm.tqdm(temporal_tweets, disable=not show_progress_bar):
         outputs = tf.sigmoid(model(tf.constant(tweets)))
-        # class_matrix = tf.reshape(tf.tile(class_tensor, [outputs.shape[0]]), (outputs.shape[0], class_tensor.shape[0]))
-        # yi = tf.reduce_mean(tf.reduce_sum(tf.multiply(outputs, class_matrix), 1)).numpy()
         sentiments = tf.gather(classes, tf.argmax(outputs, axis=1))
         probabilities = tf.reduce_max(outputs, axis=1)
 
@@ -145,41 +143,3 @@ def get_sentiment_over_time(temporal_tweets: List[Tuple[datetime, List[str]]],
         print(timestamp, yi)
         results.append((timestamp, yi))
     return results
-
-
-# def random_sampler(filename, k):
-#     sample = []
-#     with open(filename, 'rb') as f:
-#         f.seek(0, 2)
-#         filesize = f.tell()
-
-#         random_set = sorted(random.sample(range(filesize), k))
-
-#         for i in range(k):
-#             f.seek(random_set[i])
-#             # Skip current line (because we might be in the middle of a line)
-#             f.readline()
-#             # Append the next line to the sample set
-#             sample.append(f.readline().rstrip())
-
-#     return sample
-
-
-# if __name__ == '__main__':
-#     from dateutil.parser import parse
-#     import random
-#     files = Path('./data/twitter/').glob('20*.txt')
-#     temporal_tweets = []
-#     for file in files:
-#         print(file)
-#         filename = file.stem
-#         filename = filename[filename.find('-') + 1:filename.find('_p')].replace('_', '-')
-#         file_date = parse(filename, fuzzy=True).replace(day=1)
-
-#         # Get tweets (1K per month to run sentiment analysis)
-#         tweets = random_sampler(file, k=1000)
-#         temporal_tweets.append((file_date, tweets))
-
-#     model = tf.saved_model.load('output/classifier/00003-climate_change_sentiment/model_final')
-#     x = get_sentiment_over_time(temporal_tweets, model=model)
-#     print(x)
