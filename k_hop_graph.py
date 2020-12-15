@@ -5,7 +5,7 @@ import tqdm
 import logging
 import argparse
 from pathlib import Path
-from typing import Tuple, Set, Optional, Generator
+from typing import Tuple, Set, Optional, Generator, Union
 
 import numpy as np
 import networkx as nx
@@ -230,25 +230,41 @@ def draw_k_hop_graph(embeddings: WordEmbeddings, target_word: str,
         plt.text(x, y, word, fontsize=fontsize, ha='center', va='center', color=colour)
 
 
-def main(args: argparse.Namespace) -> None:
-    """Main entrypoint for the script."""
-    # Ensure that at least on data argument was provided
-    if args.checkpoint_directory is None \
-       and args.weights_filepath is None \
-       and args.vocab_filepath is None:
+def visualise_k_hop_graph(target_word: str,
+                          checkpoint: Optional[Union[str, Path]] = None,
+                          weights_filepath: Optional[Union[str, Path]] = None,
+                          vocab_filepath: Optional[Union[str, Path]] = None,
+                          k: Optional[int] = 2,
+                          alpha: Optional[float] = None,
+                          min_node_size: Optional[float] = 20,
+                          max_node_size: Optional[float] = 120,
+                          min_font_size: Optional[float] = 6,
+                          max_font_size: Optional[float] = 24,
+                          node_alpha: Optional[float] = 1,
+                          edge_alpha: Optional[float] = 0.15,
+                          target_word_label_colour: Optional[str] = 'black',
+                          colour_map: Optional[str] = 'tab20c',
+                          output_path: Optional[Union[str, Path]] = None,
+                          figure_width: Optional[int] = 800,
+                          figure_height: Optional[int] = 600,
+                          figure_dpi: Optional[int] = 96,
+                          export_dpi: Optional[int] = 96,
+                          verbose: Optional[bool] = False) -> None:
+    """Visualise the k-hop graph for the given word embeddings and interest word.
+    Requires one of checkpoint / (weights_filepath and vocab_filepath).
 
-        logger.error('One of --checkpoints / (--weights-filepath '
-                     'and --vocab-filepath) is required!')
+    If output_path is specified, then no preview window is drawn.
+    """
+    # Ensure that at least on data argument was provided
+    if checkpoint is None weights_filepath is None and vocab_filepath is None:
+        logger.error('One of checkpoint / (weights-filepath and vocab-filepath) is required!')
         exit(1)
 
-    if args.checkpoint_directory is not None:
-        weights_filepath = args.checkpoint_directory / 'proj_weights.npy'
-        vocab_filepath = args.checkpoint_directory / 'vocab.txt'
-    else:
-        weights_filepath = args.weights_filepath
-        args.vocab_filepath = args.vocab_filepath
+    if checkpoint is not None:
+        weights_filepath = checkpoint / 'proj_weights.npy'
+        vocab_filepath = checkpoint / 'vocab.txt'
 
-    if not args.verbose:
+    if not verbose:
         logger.setLevel(logging.ERROR)
 
     embeddings = WordEmbeddings(
@@ -256,37 +272,42 @@ def main(args: argparse.Namespace) -> None:
         name_metadata=weights_filepath.parent.stem
     )
 
-    figsize = (args.figure_width / args.figure_dpi, args.figure_height / args.figure_dpi)
-    plt.figure(figsize=figsize, dpi=args.figure_dpi)
+    figsize = (figure_width / figure_dpi, figure_height / figure_dpi)
+    plt.figure(figsize=figsize, dpi=figure_dpi)
 
     draw_k_hop_graph(
         embeddings,
-        args.target_word,
-        args.k,
-        alpha=args.alpha,
-        min_node_size=args.min_node_size,
-        max_node_size=args.max_node_size,
-        min_font_size=args.min_font_size,
-        max_font_size=args.max_font_size,
-        node_alpha=args.node_alpha,
-        edge_alpha=args.edge_alpha,
-        target_word_label_colour=args.target_word_label_colour,
-        community_colour_map=args.colour_map
+        target_word,
+        k,
+        alpha=alpha,
+        min_node_size=min_node_size,
+        max_node_size=max_node_size,
+        min_font_size=min_font_size,
+        max_font_size=max_font_size,
+        node_alpha=node_alpha,
+        edge_alpha=edge_alpha,
+        target_word_label_colour=target_word_label_colour,
+        community_colour_map=colour_map
     )
 
     # Show the plot, or output it, depending on the mode.
     plt.axis('off')
-    if not args.output_path:
+    if not output_path:
         plt.show()
     else:
-        output_format = (args.output_path.suffix or 'png').replace('.', '')
-        args.output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_format = (output_path.suffix or 'png').replace('.', '')
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         if output_format == 'tex' or output_format == 'latex':
             import tikzplotlib
-            tikzplotlib.save(args.output_path)
+            tikzplotlib.save(output_path)
         else:
-            plt.savefig(args.output_path, dpi=args.export_dpi)
-        logger.info('Exported figure to {}'.format(args.output_path))
+            plt.savefig(output_path, dpi=export_dpi)
+        logger.info('Exported figure to {}'.format(output_path))
+
+
+def main(args: argparse.Namespace) -> None:
+    """Main entrypoint for the script."""
+    visualise_k_hop_graph(**args)
 
 
 if __name__ == '__main__':
