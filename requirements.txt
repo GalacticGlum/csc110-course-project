@@ -16,6 +16,7 @@ internetarchive
 contractions>0.0.18
 tensorflow
 sklearn
+numpy
 
 # NOTE: tensorflow-text and tf-models-official are only required for TRAINING the BERT model.
 # tensorflow-text

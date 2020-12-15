@@ -106,7 +106,9 @@ class Tokenizer:
 
         self._counter = Counter()
         # Remove all punctuation except for underscores and hashtags
-        self._remove_punctuation_trans = str.maketrans('', '', '!"$%&\'()*+,-./:;<=>?@[\\]^`{|}~')
+        self._remove_punctuation_trans = str.maketrans(
+            '', '', '!"$%&\'()*+,-./:;<=>?@[\\]^`{|}~'
+        )
         self._initialise_defaults()
 
     def _initialise_defaults(self, reset_counter: Optional[bool] = False) -> None:
